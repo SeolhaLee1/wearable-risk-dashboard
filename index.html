@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8">
+<title>Wearable Risk Dashboard</title>
+<style>
+  body{font-family:system-ui;margin:24px}
+  .badge{padding:6px 10px;border-radius:12px;color:#fff;font-weight:700}
+  .low{background:#2e7d32}.med{background:#f9a825}.high{background:#c62828}.unknown{background:#607d8b}
+  .kv{display:flex;justify-content:space-between;max-width:520px;margin:6px 0}
+</style>
+<h2>Wearable Risk Dashboard</h2>
+<div class="kv"><div>Updated</div><div id="updated">—</div></div>
+<div class="kv"><div>AngleRate_peak</div><div id="ar">—</div></div>
+<div class="kv"><div>AngVel_peak</div><div id="av">—</div></div>
+<div class="kv"><div>MDF_drop</div><div id="mdf">—</div></div>
+<div class="kv"><div>AngleRate</div><div id="r1" class="badge unknown">UNKNOWN</div></div>
+<div class="kv"><div>AngVel</div><div id="r2" class="badge unknown">UNKNOWN</div></div>
+<div class="kv"><div>MDF_drop</div><div id="r3" class="badge unknown">UNKNOWN</div></div>
+<div class="kv"><div>Overall</div><div id="ro" class="badge unknown">UNKNOWN</div></div>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+  const wsUrl = "wss://broker.hivemq.com:8884/mqtt"; // ✅ 여기만 바꾸면 됨
+  const topic = "ewha/2270056/risk";                 // ✅ Colab에서 publish한 토픽
+
+  const $=id=>document.getElementById(id);
+  const setB=(el,l)=>{el.className="badge "+(l||"unknown");el.textContent=(l||"unknown").toUpperCase();}
+
+  const cli = mqtt.connect(wsUrl,{clientId:"web_"+Math.random().toString(16).slice(2)});
+  cli.on("connect",()=>cli.subscribe(topic));
+
+  cli.on("message",(_,p)=>{
+    const d = JSON.parse(p.toString());
+    $("updated").textContent = new Date(d.ts).toLocaleString();
+    $("ar").textContent  = (d.angleRate_peak_deg_s ?? 0).toFixed(1);
+    $("av").textContent  = (d.angVel_peak_deg_s ?? 0).toFixed(1);
+    $("mdf").textContent = (d.mdf_drop_pct ?? 0).toFixed(1);
+
+    setB($("r1"), d.risk?.angleRate);
+    setB($("r2"), d.risk?.angVel);
+    setB($("r3"), d.risk?.mdfDrop);
+    setB($("ro"), d.risk?.overall);
+  });
+</script>
