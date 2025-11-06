@@ -1,42 +1,100 @@
-<!doctype html><meta charset="utf-8">
-<title>Wearable Risk Dashboard</title>
-<style>
-  body{font-family:system-ui;margin:24px}
-  .badge{padding:6px 10px;border-radius:12px;color:#fff;font-weight:700}
-  .low{background:#2e7d32}.med{background:#f9a825}.high{background:#c62828}.unknown{background:#607d8b}
-  .kv{display:flex;justify-content:space-between;max-width:520px;margin:6px 0}
-</style>
-<h2>Wearable Risk Dashboard</h2>
-<div class="kv"><div>Updated</div><div id="updated">—</div></div>
-<div class="kv"><div>AngleRate_peak</div><div id="ar">—</div></div>
-<div class="kv"><div>AngVel_peak</div><div id="av">—</div></div>
-<div class="kv"><div>MDF_drop</div><div id="mdf">—</div></div>
-<div class="kv"><div>AngleRate</div><div id="r1" class="badge unknown">UNKNOWN</div></div>
-<div class="kv"><div>AngVel</div><div id="r2" class="badge unknown">UNKNOWN</div></div>
-<div class="kv"><div>MDF_drop</div><div id="r3" class="badge unknown">UNKNOWN</div></div>
-<div class="kv"><div>Overall</div><div id="ro" class="badge unknown">UNKNOWN</div></div>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wearable Risk Dashboard</title>
 
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root{
+      --bg:#0f172a; --card:#111827; --muted:#94a3b8; --fg:#e5e7eb;
+      --low:#2e7d32; --med:#f59e0b; --high:#dc2626; --unknown:#64748b;
+      --accent:#38bdf8;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1223,#0f172a);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Apple SD Gothic Neo,Roboto,Helvetica,Arial}
+    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{font-size:clamp(20px,3vw,28px);margin:0;font-weight:800;letter-spacing:.2px}
+    .small{color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+    @media (max-width:920px){.grid{grid-template-columns:1fr}}
+    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px 16px;backdrop-filter: blur(4px)}
+    .row{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+    .key{color:#cbd5e1}
+    .badge{padding:6px 12px;border-radius:999px;color:#fff;font-weight:800;letter-spacing:.5px;min-width:96px;text-align:center}
+    .low{background:var(--low)} .med{background:var(--med)} .high{background:var(--high)} .unknown{background:var(--unknown)}
+    .pill{display:inline-flex;gap:6px;align-items:center;background:rgba(56,189,248,.14);color:#bae6fd;border:1px solid rgba(56,189,248,.25);padding:4px 10px;border-radius:999px}
+    .chart{height:260px}
+    a{color:#7dd3fc}
+  </style>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Wearable Risk Dashboard</h1>
+      <div class="pill"><span id="status">connecting…</span></div>
+    </header>
+
+    <canvas id="chart_ar" class="chart"></canvas>
+    <canvas id="chart_rms" class="chart" style="margin-top:10px"></canvas>
+    <canvas id="chart_mdf" class="chart" style="margin-top:10px"></canvas>
+
+    <div class="card" style="margin-top:16px">
+      <div class="row"><div>AngleRate</div><div id="risk_ar" class="badge unknown">UNKNOWN</div></div>
+      <div class="row"><div>RMS Drop</div><div id="risk_rms" class="badge unknown">UNKNOWN</div></div>
+      <div class="row"><div>MDF Drop</div><div id="risk_mdf" class="badge unknown">UNKNOWN</div></div>
+      <div class="row"><div><b>Overall</b></div><div id="risk_overall" class="badge unknown">UNKNOWN</div></div>
+    </div>
+  </div>
+
 <script>
-  const wsUrl = "wss://broker.hivemq.com:8884/mqtt"; // ✅ 여기만 바꾸면 됨
-  const topic = "ewha/2270056/risk";                 // ✅ Colab에서 publish한 토픽
+const wsUrl = "wss://damoa.io:8083/mqtt";   // ✅ damoa WSS
+const topic = "ewha/2270056/risk";          // ✅ Colab이 발행한 최종 위험도 JSON
 
-  const $=id=>document.getElementById(id);
-  const setB=(el,l)=>{el.className="badge "+(l||"unknown");el.textContent=(l||"unknown").toUpperCase();}
+const TH = {
+  angleRate: {low:100, med:200},
+  rmsDrop:   {low:10,  med:40},
+  mdfDrop:   {low:10,  med:20}
+};
 
-  const cli = mqtt.connect(wsUrl,{clientId:"web_"+Math.random().toString(16).slice(2)});
-  cli.on("connect",()=>cli.subscribe(topic));
+function level(v, th){ if(v < th.low) return "low"; if(v < th.med) return "med"; return "high"; }
 
-  cli.on("message",(_,p)=>{
-    const d = JSON.parse(p.toString());
-    $("updated").textContent = new Date(d.ts).toLocaleString();
-    $("ar").textContent  = (d.angleRate_peak_deg_s ?? 0).toFixed(1);
-    $("av").textContent  = (d.angVel_peak_deg_s ?? 0).toFixed(1);
-    $("mdf").textContent = (d.mdf_drop_pct ?? 0).toFixed(1);
+const client = mqtt.connect(wsUrl);
 
-    setB($("r1"), d.risk?.angleRate);
-    setB($("r2"), d.risk?.angVel);
-    setB($("r3"), d.risk?.mdfDrop);
-    setB($("ro"), d.risk?.overall);
-  });
+client.on("connect", ()=>{
+  document.getElementById("status").textContent = "connected ✅";
+  client.subscribe(topic);
+});
+client.on("reconnect", ()=> document.getElementById("status").textContent = "reconnecting…");
+client.on("error", ()=> document.getElementById("status").textContent = "connection error ❌");
+
+const makeChart = (ctx, label) => new Chart(ctx,{type:'line',data:{labels:[],datasets:[{label,data:[],borderColor:'#38bdf8',tension:0.2,pointRadius:0}]},options:{animation:false}});
+const c1 = makeChart(document.getElementById("chart_ar"), "AngleRate");
+const c2 = makeChart(document.getElementById("chart_rms"), "RMS Drop");
+const c3 = makeChart(document.getElementById("chart_mdf"), "MDF Drop");
+
+function push(chart, value){
+  chart.data.labels.push("");
+  chart.data.datasets[0].data.push(value);
+  if(chart.data.labels.length > 200){ chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+  chart.update();
+}
+
+client.on("message", (_, payload)=>{
+  const d = JSON.parse(payload.toString());
+  push(c1, d.angleRate_peak_deg_s);
+  push(c2, d.emg_rms_drop_pct);
+  push(c3, d.mdf_drop_pct);
+
+  document.getElementById("risk_ar").className = "badge " + d.risk.angleRate;
+  document.getElementById("risk_rms").className = "badge " + d.risk.rmsDrop;
+  document.getElementById("risk_mdf").className = "badge " + d.risk.mdfDrop;
+  document.getElementById("risk_overall").className = "badge " + d.risk.overall;
+});
 </script>
+</body>
+</html>
