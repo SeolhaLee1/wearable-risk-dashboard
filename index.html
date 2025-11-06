@@ -1,100 +1,67 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Wearable Risk Dashboard</title>
-
-  <style>
-    :root{
-      --bg:#0f172a; --card:#111827; --muted:#94a3b8; --fg:#e5e7eb;
-      --low:#2e7d32; --med:#f59e0b; --high:#dc2626; --unknown:#64748b;
-      --accent:#38bdf8;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:linear-gradient(180deg,#0b1223,#0f172a);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Apple SD Gothic Neo,Roboto,Helvetica,Arial}
-    .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
-    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:14px}
-    h1{font-size:clamp(20px,3vw,28px);margin:0;font-weight:800;letter-spacing:.2px}
-    .small{color:var(--muted);font-size:13px}
-    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
-    @media (max-width:920px){.grid{grid-template-columns:1fr}}
-    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px 16px;backdrop-filter: blur(4px)}
-    .row{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
-    .key{color:#cbd5e1}
-    .badge{padding:6px 12px;border-radius:999px;color:#fff;font-weight:800;letter-spacing:.5px;min-width:96px;text-align:center}
-    .low{background:var(--low)} .med{background:var(--med)} .high{background:var(--high)} .unknown{background:var(--unknown)}
-    .pill{display:inline-flex;gap:6px;align-items:center;background:rgba(56,189,248,.14);color:#bae6fd;border:1px solid rgba(56,189,248,.25);padding:4px 10px;border-radius:999px}
-    .chart{height:260px}
-    a{color:#7dd3fc}
-  </style>
-
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-  <div class="wrap">
-    <header>
-      <h1>Wearable Risk Dashboard</h1>
-      <div class="pill"><span id="status">connecting…</span></div>
-    </header>
-
-    <canvas id="chart_ar" class="chart"></canvas>
-    <canvas id="chart_rms" class="chart" style="margin-top:10px"></canvas>
-    <canvas id="chart_mdf" class="chart" style="margin-top:10px"></canvas>
-
-    <div class="card" style="margin-top:16px">
-      <div class="row"><div>AngleRate</div><div id="risk_ar" class="badge unknown">UNKNOWN</div></div>
-      <div class="row"><div>RMS Drop</div><div id="risk_rms" class="badge unknown">UNKNOWN</div></div>
-      <div class="row"><div>MDF Drop</div><div id="risk_mdf" class="badge unknown">UNKNOWN</div></div>
-      <div class="row"><div><b>Overall</b></div><div id="risk_overall" class="badge unknown">UNKNOWN</div></div>
-    </div>
-  </div>
-
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
-const wsUrl = "wss://damoa.io:8083/mqtt";   // ✅ damoa WSS
-const topic = "ewha/2270056/risk";          // ✅ Colab이 발행한 최종 위험도 JSON
+  // damoa WSS 후보들: 필요없는 건 지워도 됨
+  const CANDIDATE_WS = [
+    "wss://damoa.io:8083/mqtt",
+    "wss://damoa.io:8083/",
+    "wss://damoa.io:9001/mqtt",
+    "wss://damoa.io/mqtt"
+  ];
+  const TOPIC = "ewha/2270056/risk";
 
-const TH = {
-  angleRate: {low:100, med:200},
-  rmsDrop:   {low:10,  med:40},
-  mdfDrop:   {low:10,  med:20}
-};
+  const $ = (id)=>document.getElementById(id);
+  function connectTry(idx=0){
+    if(idx >= CANDIDATE_WS.length){
+      $("status").textContent = "connection error (all candidates failed)";
+      console.error("[MQTT] All WSS candidates failed.");
+      console.warn("Check: 1) WSS port open  2) path(/mqtt)  3) valid TLS cert (not self-signed).");
+      return;
+    }
+    const url = CANDIDATE_WS[idx];
+    console.log("[MQTT] Trying", url);
+    $("status").textContent = `connecting… (${url})`;
 
-function level(v, th){ if(v < th.low) return "low"; if(v < th.med) return "med"; return "high"; }
+    const cli = mqtt.connect(url, {
+      clean: true,
+      connectTimeout: 8000,
+      clientId: "webdash_"+Math.random().toString(16).slice(2),
+      // damoa가 계정/비번 요구하면 아래 주석 해제
+      // username: "YOUR_USER",
+      // password: "YOUR_PASS",
+      keepalive: 30,
+      reconnectPeriod: 0   // 우리가 수동으로 다음 후보 시도
+    });
 
-const client = mqtt.connect(wsUrl);
+    let bound = false;
 
-client.on("connect", ()=>{
-  document.getElementById("status").textContent = "connected ✅";
-  client.subscribe(topic);
-});
-client.on("reconnect", ()=> document.getElementById("status").textContent = "reconnecting…");
-client.on("error", ()=> document.getElementById("status").textContent = "connection error ❌");
+    cli.on("connect", () => {
+      bound = true;
+      console.log("[MQTT] Connected:", url);
+      $("status").textContent = "connected";
+      cli.subscribe(TOPIC);
+      // 메시지 처리: 기존 코드에 있던 on('message') 콜백 연결
+      cli.on("message", (_, payload) => {
+        try {
+          const d = JSON.parse(payload.toString());
+          window.__handleRiskMessage && window.__handleRiskMessage(d); // 아래에서 정의
+        } catch(e){ console.error(e); }
+      });
+    });
 
-const makeChart = (ctx, label) => new Chart(ctx,{type:'line',data:{labels:[],datasets:[{label,data:[],borderColor:'#38bdf8',tension:0.2,pointRadius:0}]},options:{animation:false}});
-const c1 = makeChart(document.getElementById("chart_ar"), "AngleRate");
-const c2 = makeChart(document.getElementById("chart_rms"), "RMS Drop");
-const c3 = makeChart(document.getElementById("chart_mdf"), "MDF Drop");
+    cli.on("error", (e) => {
+      console.error(`[MQTT] Error on ${url}:`, e);
+    });
 
-function push(chart, value){
-  chart.data.labels.push("");
-  chart.data.datasets[0].data.push(value);
-  if(chart.data.labels.length > 200){ chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
-  chart.update();
-}
-
-client.on("message", (_, payload)=>{
-  const d = JSON.parse(payload.toString());
-  push(c1, d.angleRate_peak_deg_s);
-  push(c2, d.emg_rms_drop_pct);
-  push(c3, d.mdf_drop_pct);
-
-  document.getElementById("risk_ar").className = "badge " + d.risk.angleRate;
-  document.getElementById("risk_rms").className = "badge " + d.risk.rmsDrop;
-  document.getElementById("risk_mdf").className = "badge " + d.risk.mdfDrop;
-  document.getElementById("risk_overall").className = "badge " + d.risk.overall;
-});
+    cli.on("close", () => {
+      if(bound){ // 한 번 붙었다 끊긴 경우 → 브로커 단절
+        $("status").textContent = "reconnecting…";
+        // 원한다면 여기서 같은 url로 재연결 로직 추가 가능
+      }else{
+        console.warn("[MQTT] Failed candidate:", url);
+        // 다음 후보로 시도
+        connectTry(idx+1);
+      }
+    });
+  }
+  connectTry();
 </script>
-</body>
-</html>
