@@ -1,67 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Wearable Risk Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+body { font-family: Arial; background:#fafafa; padding:20px; }
+.card { padding:15px; border-radius:10px; margin:10px 0; }
+#riskBox { font-size:32px; font-weight:bold; color:white; padding:20px; border-radius:15px; }
+</style>
+
+</head>
+<body>
+
+<h2>🏃 Wearable Real-time Dashboard</h2>
+
+<div id="riskBox">Risk: -</div>
+
+<canvas id="imuChart" height="100"></canvas>
+<canvas id="emgChart" height="100"></canvas>
+
 <script>
-  // damoa WSS 후보들: 필요없는 건 지워도 됨
-  const CANDIDATE_WS = [
-    "wss://damoa.io:8083/mqtt",
-    "wss://damoa.io:8083/",
-    "wss://damoa.io:9001/mqtt",
-    "wss://damoa.io/mqtt"
-  ];
-  const TOPIC = "ewha/2270056/risk";
+const brokerUrl = "wss://damoa.io:9002";
+const clientId = "webdash-" + Math.random().toString(16).substr(2, 8);
 
-  const $ = (id)=>document.getElementById(id);
-  function connectTry(idx=0){
-    if(idx >= CANDIDATE_WS.length){
-      $("status").textContent = "connection error (all candidates failed)";
-      console.error("[MQTT] All WSS candidates failed.");
-      console.warn("Check: 1) WSS port open  2) path(/mqtt)  3) valid TLS cert (not self-signed).");
-      return;
-    }
-    const url = CANDIDATE_WS[idx];
-    console.log("[MQTT] Trying", url);
-    $("status").textContent = `connecting… (${url})`;
+const client = mqtt.connect(brokerUrl, { clientId });
 
-    const cli = mqtt.connect(url, {
-      clean: true,
-      connectTimeout: 8000,
-      clientId: "webdash_"+Math.random().toString(16).slice(2),
-      // damoa가 계정/비번 요구하면 아래 주석 해제
-      // username: "YOUR_USER",
-      // password: "YOUR_PASS",
-      keepalive: 30,
-      reconnectPeriod: 0   // 우리가 수동으로 다음 후보 시도
-    });
+// 1) 차트 기본 세팅 ===========================
+const imuCtx = document.getElementById("imuChart").getContext("2d");
+const emgCtx = document.getElementById("emgChart").getContext("2d");
 
-    let bound = false;
-
-    cli.on("connect", () => {
-      bound = true;
-      console.log("[MQTT] Connected:", url);
-      $("status").textContent = "connected";
-      cli.subscribe(TOPIC);
-      // 메시지 처리: 기존 코드에 있던 on('message') 콜백 연결
-      cli.on("message", (_, payload) => {
-        try {
-          const d = JSON.parse(payload.toString());
-          window.__handleRiskMessage && window.__handleRiskMessage(d); // 아래에서 정의
-        } catch(e){ console.error(e); }
-      });
-    });
-
-    cli.on("error", (e) => {
-      console.error(`[MQTT] Error on ${url}:`, e);
-    });
-
-    cli.on("close", () => {
-      if(bound){ // 한 번 붙었다 끊긴 경우 → 브로커 단절
-        $("status").textContent = "reconnecting…";
-        // 원한다면 여기서 같은 url로 재연결 로직 추가 가능
-      }else{
-        console.warn("[MQTT] Failed candidate:", url);
-        // 다음 후보로 시도
-        connectTry(idx+1);
-      }
-    });
+const imuChart = new Chart(imuCtx, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      { label:"IMU2 Gyro Magnitude", data:[], borderColor:"blue" }
+    ]
   }
-  connectTry();
+});
+
+const emgChart = new Chart(emgCtx, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      { label:"EMG Envelope", data:[], borderColor:"red" }
+    ]
+  }
+});
+
+// 2) MQTT 연결 ===============================
+client.on("connect", () => {
+  console.log("MQTT Connected!");
+  client.subscribe("ewha/2270056/raw");
+  client.subscribe("ewha/2270056/risk");
+});
+
+// 3) 메시지 수신 ==============================
+client.on("message", (topic, payload) => {
+  let msg;
+  try { msg = JSON.parse(payload.toString()); } catch { return; }
+
+  // ---- raw 센서값 반영 ----
+  if (topic.includes("raw")) {
+    const t = msg.ts;
+    const g2x = parseFloat(msg.imu2?.gx);
+    const g2y = parseFloat(msg.imu2?.gy);
+    const g2z = parseFloat(msg.imu2?.gz);
+    const emg = parseFloat(msg.emg?.env);
+
+    const gmag = Math.sqrt(g2x*g2x + g2y*g2y + g2z*g2z);
+
+    imuChart.data.labels.push(t);
+    imuChart.data.datasets[0].data.push(gmag);
+    if (imuChart.data.labels.length > 100) {
+      imuChart.data.labels.shift();
+      imuChart.data.datasets[0].data.shift();
+    }
+    imuChart.update();
+
+    emgChart.data.labels.push(t);
+    emgChart.data.datasets[0].data.push(emg);
+    if (emgChart.data.labels.length > 100) {
+      emgChart.data.labels.shift();
+      emgChart.data.datasets[0].data.shift();
+    }
+    emgChart.update();
+  }
+
+  // ---- risk 컬러 박스 업데이트 ----
+  if (topic.includes("risk")) {
+    const risk = msg?.risk?.overall || "-";
+    const box = document.getElementById("riskBox");
+    box.innerHTML = "Risk: " + risk;
+
+    if (risk == "high") box.style.background = "#e60000";
+    else if (risk == "med") box.style.background = "#e6b800";
+    else if (risk == "low") box.style.background = "#00b300";
+    else box.style.background = "#777";
+  }
+});
 </script>
+
+</body>
+</html>
