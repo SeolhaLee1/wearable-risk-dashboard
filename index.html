@@ -1,750 +1,355 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>안다치조 – Wearable Real-time Dashboard</title>
+<meta charset="UTF-8" />
+<title>안다치조 실시간 부상예방 대시보드</title>
 
-  <!-- MQTT JS (Browser) -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<!-- MQTT -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
-  <style>
-    /* ============= Global ============= */
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<!-- 스타일 (Ewha Green 테마 + 카드 + 레이아웃) -->
+<style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR",
-        system-ui, sans-serif;
-      background: radial-gradient(circle at 20% 10%, #E7F4EF, #F8FAF9 60%);
-      color: #1f2a2c;
-      padding: 24px;
+        margin: 0;
+        font-family: Pretendard, 'Noto Sans KR', sans-serif;
+        background: #f5f7f5;
+        color: #123423;
     }
 
-    .page {
-      max-width: 1100px;
-      margin: 0 auto;
+    header {
+        background: #0B3D2E;
+        color: white;
+        padding: 18px 30px;
+        font-size: 26px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
 
-    /* ============= Header ============= */
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 20px;
+    .logo {
+        font-size: 32px;
+        font-weight: 900;
+        padding: 3px 10px;
+        background: white;
+        color: #0B3D2E;
+        border-radius: 6px;
     }
 
-    .brand-left {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    .container {
+        padding: 25px;
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        grid-gap: 25px;
     }
 
-    .brand-top {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 4px;
-    }
-
-    .logo-wrap {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .andachi-logo {
-      width: 48px;
-      height: 48px;
-      flex-shrink: 0;
-      display: block;
-    }
-
-    .team-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 12px;
-      border-radius: 999px;
-      background: rgba(15, 76, 58, 0.10);
-      border: 1px solid rgba(15, 76, 58, 0.24);
-      color: #0F4C3A;
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-    }
-
-    .team-badge span {
-      white-space: nowrap;
-    }
-
-    .title {
-      font-size: 30px;
-      font-weight: 800;
-      color: #0F4C3A;
-    }
-
-    .subtitle {
-      font-size: 13px;
-      color: #5F6A67;
-      margin-top: 2px;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: flex-start;
-      font-size: 12px;
-      color: #7d8a85;
-    }
-
-    .last-update-label {
-      margin-right: 4px;
-      font-weight: 500;
-    }
-
-    /* ============= Layout ============= */
-    .main-grid {
-      display: grid;
-      grid-template-columns: 2.1fr 1.2fr;
-      gap: 16px;
-    }
-
-    @media (max-width: 900px) {
-      .main-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* ============= Cards ============= */
     .card {
-      background: #ffffff;
-      border-radius: 18px;
-      padding: 18px 20px;
-      box-shadow: 0 10px 25px rgba(15, 76, 58, 0.07);
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
+        background: white;
+        border-radius: 14px;
+        padding: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
     }
 
     .card-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: #1f2a2c;
+        font-weight: 700;
+        margin-bottom: 10px;
+        font-size: 20px;
+        color: #0B3D2E;
     }
 
-    .card-sub {
-      font-size: 13px;
-      color: #6b7a78;
-      margin-bottom: 10px;
-      line-height: 1.4;
-    }
-
-    /* ============= Pills ============= */
+    /* Risk Pill */
     .pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
+        padding: 4px 14px;
+        border-radius: 20px;
+        color: white;
+        display: inline-block;
+        margin-left: 8px;
+        font-weight: 600;
+    }
+    .low { background: #2ecc71; }
+    .med { background: #f1c40f; color: black; }
+    .high { background: #e74c3c; }
+
+    /* 전체 위험도 Progress Bar */
+    .progress-wrapper {
+        height: 20px;
+        background: #e8f0ea;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 10px;
+    }
+    .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #2ecc71, #f1c40f, #e74c3c);
+        transition: width 0.6s ease;
     }
 
-    .pill-low {
-      background: #E4F6EC;
-      color: #0F6A3A;
+    /* Stick Figure Canvas */
+    #stickCanvas {
+        width: 100%;
+        height: 260px;
+        background: #f9fbf9;
+        border-radius: 10px;
     }
 
-    .pill-med {
-      background: #FFF3D6;
-      color: #A76B11;
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+    th, td {
+        padding: 6px 3px;
+        border-bottom: 1px solid #eee;
+        font-size: 14px;
+    }
+    th {
+        background: #eaf1ed;
     }
 
-    .pill-high {
-      background: #FFE1E1;
-      color: #B3261E;
+    .ai-box {
+        background: #eaf5ef;
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 15px;
+        margin-top: 10px;
+        border-left: 4px solid #0B3D2E;
+        line-height: 1.5;
     }
-
-    /* 큰 pill (종합 위험도) */
-    .pill-large {
-      font-size: 16px;
-      padding: 6px 18px;
-    }
-
-    /* ============= Metric rows ============= */
-    .metric-row {
-      margin-top: 16px;
-    }
-
-    .metric-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-    }
-
-    .metric-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #1f2a2c;
-    }
-
-    .metric-unit {
-      font-size: 12px;
-      color: #8a9896;
-      margin-left: 4px;
-    }
-
-    .metric-value {
-      font-size: 13px;
-      color: #4d5b59;
-    }
-
-    /* scale bar */
-    .scale-bar {
-      position: relative;
-      height: 10px;
-      border-radius: 999px;
-      overflow: hidden;
-      background: linear-gradient(
-        to right,
-        #C3E8D2 0%,
-        #C3E8D2 33%,
-        #FFE5AA 33%,
-        #FFE5AA 66%,
-        #FFC1C1 66%,
-        #FFC1C1 100%
-      );
-      margin-bottom: 4px;
-    }
-
-    .scale-marker {
-      position: absolute;
-      top: -4px;
-      width: 0;
-      height: 18px;
-      border-left: 3px solid #222;
-    }
-
-    .scale-caption {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: #8a9896;
-    }
-
-    .scale-caption span.dot {
-      margin-right: 4px;
-      font-size: 10px;
-    }
-
-    .scale-caption .safe   { color: #0F6A3A; }
-    .scale-caption .warn   { color: #A76B11; }
-    .scale-caption .danger { color: #B3261E; }
-
-    .scale-caption .safe .dot   { color: #0F6A3A; }
-    .scale-caption .warn .dot   { color: #FFC107; }
-    .scale-caption .danger .dot { color: #E53935; }
-
-    /* ============= Local risk line ============= */
-    .local-risk-text {
-      font-size: 13px;
-      color: #5F6A67;
-      line-height: 1.5;
-    }
-
-    .local-risk-pill {
-      display: inline-flex;
-      align-items: center;
-      margin-left: 8px;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #E7F4EF;
-      color: #0F4C3A;
-    }
-
-    /* ============= Guide / Coaching ============= */
-    .guide-title {
-      font-size: 17px;
-      font-weight: 700;
-      margin-bottom: 6px;
-      color: #1f2a2c;
-    }
-
-    .guide-text {
-      font-size: 13px;
-      color: #5F6A67;
-      line-height: 1.5;
-      margin-bottom: 14px;
-    }
-
-    .divider {
-      height: 1px;
-      background: #EEF3F2;
-      margin: 10px 0 12px;
-    }
-
-    .coach-status-pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: #E7F4EF;
-      color: #0F4C3A;
-      font-size: 12px;
-      margin-bottom: 6px;
-    }
-
-    .coach-status-pill-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: #18A05D;
-      margin-right: 6px;
-    }
-
-    .coach-title {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 4px;
-      color: #1f2a2c;
-    }
-
-    .coach-body {
-      font-size: 13px;
-      color: #5F6A67;
-      line-height: 1.5;
-      margin-bottom: 10px;
-    }
-
-    .coach-tips {
-      font-size: 11px;
-      color: #9aa7a4;
-      line-height: 1.4;
-    }
-
-    .threshold-note {
-      font-size: 11px;
-      color: #9aa7a4;
-      margin-top: 8px;
-      line-height: 1.4;
-      text-align: right;
-    }
-
-    /* small helper text */
-    .hint-muted {
-      font-size: 11px;
-      color: #9AA7A4;
-      margin-top: 4px;
-    }
-  </style>
+</style>
 </head>
-
 <body>
-  <div class="page">
-    <!-- ================= Header ================= -->
-    <header class="header">
-      <div class="brand-left">
-        <div class="brand-top">
-          <!-- ANDACHI LOGO -->
-          <div class="logo-wrap">
-            <svg class="andachi-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="ANDACHI logo">
-              <circle cx="32" cy="32" r="30" fill="#0F4C3A" />
-              <path
-                d="M32 14
-                   L21 18
-                   v12
-                   c0 8.5 5 14.5 11 17.5
-                   c6-3 11-9 11-17.5
-                   V18
-                   Z"
-                fill="#F8FAF9"
-              />
-              <path
-                d="M27 24
-                   Q 32 24 34 28
-                   Q 36 32 33 36
-                   L 30 40"
-                fill="none"
-                stroke="#0F4C3A"
-                stroke-width="2.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <circle cx="33" cy="29.5" r="2.4" fill="#0F4C3A" />
-              <path
-                d="M38 19
-                   q 5 -3 9 -1
-                   q -2.5 5 -7.5 6
-                   q -1.5 -2.5 -1.5 -5z"
-                fill="#4E8A6D"
-              />
-            </svg>
-          </div>
 
-          <!-- Team badge -->
-          <div class="team-badge">
-            <span>안다치조 ANDACHI</span>
-          </div>
-        </div>
+<header>
+    <div class="logo">안다치조</div>
+    실시간 부상예방 대시보드
+</header>
 
-        <div class="title">Wearable Real-time Dashboard</div>
-        <div class="subtitle">IMU + EMG 기반 실시간 무릎 부상 위험 모니터링</div>
-      </div>
+<div class="container">
 
-      <div class="header-right">
-        <span class="last-update-label">Last update:</span>
-        <span id="lastUpdated">-</span>
-      </div>
-    </header>
+    <!-- 왼쪽: 실시간 시각화 -->
+    <div>
 
-    <!-- ================= Main Grid ================= -->
-    <div class="main-grid">
-      <!-- ========= LEFT: Risk metrics ========= -->
-      <div>
+        <!-- 스틱 피겨 -->
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">종합 위험도</div>
-            <div id="overallPill" class="pill pill-large pill-low">LOW</div>
-          </div>
-          <div id="overallDesc" class="card-sub">
-            센서 연결 전이거나 안정 상태입니다. 움직임을 시작하면 위험도가 갱신됩니다.
-          </div>
-
-          <!-- Knee angle rate -->
-          <div class="metric-row">
-            <div class="metric-top">
-              <div>
-                <span class="metric-label">무릎 상대 각속도 피크</span>
-                <span class="metric-unit">(deg/s)</span>
-              </div>
-              <div class="metric-value">
-                <span id="angleRateVal">-</span>
-                <span> · </span>
-                <span id="angleRateLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
-              </div>
-            </div>
-            <div class="scale-bar">
-              <div id="angleRateMarker" class="scale-marker"></div>
-            </div>
-            <div class="scale-caption">
-              <span class="safe"><span class="dot">●</span>안정 (&lt; 100)</span>
-              <span class="warn"><span class="dot">●</span>주의 (100–200)</span>
-              <span class="danger"><span class="dot">●</span>위험 (&gt;= 200)</span>
-            </div>
-          </div>
-
-          <!-- EMG RMS drop -->
-          <div class="metric-row">
-            <div class="metric-top">
-              <div>
-                <span class="metric-label">EMG RMS 감소율</span>
-                <span class="metric-unit">(%)</span>
-              </div>
-              <div class="metric-value">
-                <span id="rmsDropVal">-</span>
-                <span> · </span>
-                <span id="rmsDropLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
-              </div>
-            </div>
-            <div class="scale-bar">
-              <div id="rmsDropMarker" class="scale-marker"></div>
-            </div>
-            <div class="scale-caption">
-              <span class="safe"><span class="dot">●</span>근활동 유지 (&lt; 20)</span>
-              <span class="warn"><span class="dot">●</span>피로 누적 (20–50)</span>
-              <span class="danger"><span class="dot">●</span>피로 과다 (&gt;= 50)</span>
-            </div>
-          </div>
-
-          <!-- EMG MDF drop -->
-          <div class="metric-row">
-            <div class="metric-top">
-              <div>
-                <span class="metric-label">EMG MDF 감소율</span>
-                <span class="metric-unit">(%)</span>
-              </div>
-              <div class="metric-value">
-                <span id="mdfDropVal">-</span>
-                <span> · </span>
-                <span id="mdfDropLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
-              </div>
-            </div>
-            <div class="scale-bar">
-              <div id="mdfDropMarker" class="scale-marker"></div>
-            </div>
-            <div class="scale-caption">
-              <span class="safe"><span class="dot">●</span>주파수 정상 (&lt; 10)</span>
-              <span class="warn"><span class="dot">●</span>피로 진행 (10–20)</span>
-              <span class="danger"><span class="dot">●</span>피로 심함 (&gt;= 20)</span>
-            </div>
-          </div>
-
-          <!-- Local risk -->
-          <div class="metric-row" style="margin-top: 20px;">
-            <div class="metric-label">Local Risk (IMU2 자이로)</div>
-            <div class="hint-muted">
-              ESP32가 IMU2 자이로 크기만으로 평가한 간단 위험도입니다.
-            </div>
-            <div class="local-risk-text" style="margin-top: 6px;">
-              현재 보드 로컬 평가:
-              <span id="localRiskText">-</span>
-              <span id="localRiskPill" class="local-risk-pill" style="display:none;">-</span>
-            </div>
-          </div>
+            <div class="card-title">실시간 자세(Stick Figure)</div>
+            <canvas id="stickCanvas"></canvas>
         </div>
-      </div>
 
-      <!-- ========= RIGHT: Guide & Coaching ========= -->
-      <div>
-        <div class="card" style="margin-bottom: 10px;">
-          <div class="guide-title">부상 예방 가이드</div>
-          <div id="guideText" class="guide-text">
-            센서가 안정적으로 수집되면 이 영역에 현재 위험 요인과
-            예방 행동이 표시됩니다.
-          </div>
-          <div class="divider"></div>
-
-          <div class="guide-title" style="font-size: 16px;">AI 자세 교정 코멘트</div>
-          <div id="coachStatusPill" class="coach-status-pill">
-            <span class="coach-status-pill-dot"></span>
-            <span id="coachStatusText">안전 자세</span>
-          </div>
-
-          <div id="coachTitle" class="coach-title">좋은 자세를 유지하고 있어요</div>
-          <div id="coachBody" class="coach-body">
-            움직임을 시작하면 센서 기반으로 자세 피드백이 여기에 표시됩니다.
-          </div>
-
-          <div id="coachTips" class="coach-tips">
-            기준값 각속도: &lt;100 low · 100–200 med · ≥200 high<br/>
-            기준값 RMS 감소율: &lt;20% low · 20–50% med · ≥50% high
-          </div>
+        <!-- 전체 위험도 -->
+        <div class="card">
+            <div class="card-title">
+                전체 위험도 
+                <span id="overall-pill" class="pill low">low</span>
+            </div>
+            <div class="progress-wrapper">
+                <div id="risk-progress" class="progress-bar"></div>
+            </div>
         </div>
-      </div>
+
+        <!-- 실시간 그래프 -->
+        <div class="card">
+            <div class="card-title">각속도 변화 (AngleRate)</div>
+            <canvas id="angleChart"></canvas>
+        </div>
+
+        <div class="card">
+            <div class="card-title">EMG RMS</div>
+            <canvas id="rmsChart"></canvas>
+        </div>
+
+        <div class="card">
+            <div class="card-title">EMG MDF</div>
+            <canvas id="mdfChart"></canvas>
+        </div>
+
     </div>
-  </div>
 
-  <!-- ================= Scripts ================= -->
-  <script>
-    // ===== MQTT Settings =====
-    const BROKER_URL = "wss://damoa.io:9002";
-    const RISK_TOPIC = "ewha/2270056/risk";   // Colab이 발행하는 위험도 토픽
+    <!-- 오른쪽: 실시간 데이터 / 위험도 / AI 코멘트 -->
+    <div>
 
-    const clientId = "andachi-web-" + Math.random().toString(16).substring(2, 10);
-    const client = mqtt.connect(BROKER_URL, { clientId });
+        <!-- 세부 위험도 -->
+        <div class="card">
+            <div class="card-title">세부 위험 분석</div>
+            <table>
+                <tr><th>지표</th><th>값</th><th>위험도</th></tr>
+                <tr><td>각속도 peak</td><td id="val-angle">-</td><td id="risk-angle">-</td></tr>
+                <tr><td>RMS drop</td><td id="val-rms">-</td><td id="risk-rms">-</td></tr>
+                <tr><td>MDF drop</td><td id="val-mdf">-</td><td id="risk-mdf">-</td></tr>
+                <tr><td>IMU2(Local)</td><td id="val-local">-</td><td id="risk-local">-</td></tr>
+            </table>
+        </div>
 
-    client.on("connect", () => {
-      console.log("MQTT connected as", clientId);
-      client.subscribe(RISK_TOPIC, (err) => {
-        if (err) console.error("subscribe error:", err);
-        else console.log("Subscribed to", RISK_TOPIC);
-      });
-    });
+        <!-- 최신 값 표 -->
+        <div class="card">
+            <div class="card-title">실시간 Raw Data</div>
+            <table>
+                <tr><th>항목</th><th>값</th></tr>
+                <tr><td>i1_gx</td><td id="raw-gx1">-</td></tr>
+                <tr><td>i1_gy</td><td id="raw-gy1">-</td></tr>
+                <tr><td>i1_gz</td><td id="raw-gz1">-</td></tr>
+                <tr><td>i2_gx</td><td id="raw-gx2">-</td></tr>
+                <tr><td>i2_gy</td><td id="raw-gy2">-</td></tr>
+                <tr><td>i2_gz</td><td id="raw-gz2">-</td></tr>
+                <tr><td>EMG env</td><td id="raw-emg">-</td></tr>
+            </table>
+        </div>
 
-    client.on("error", (err) => {
-      console.error("MQTT error:", err);
-    });
+        <!-- AI 코멘트 -->
+        <div class="card">
+            <div class="card-title">AI 자세 / 부상 예방 코멘트</div>
+            <div id="ai-comment" class="ai-box">
+                실시간 데이터 수집 중... (센서를 연결하세요!)
+            </div>
+        </div>
 
-    client.on("message", (topic, message) => {
-      if (topic !== RISK_TOPIC) return;
-      try {
-        const payload = JSON.parse(message.toString());
-        updateDashboard(payload);
-      } catch (e) {
-        console.error("JSON parse error:", e);
-      }
-    });
+    </div>
+</div>
 
-    // ===== Helper functions =====
-    function fmtNumber(v, digits = 1) {
-      if (v === null || v === undefined || !isFinite(v)) return "-";
-      return v.toFixed(digits);
-    }
+<script>
+// ======================= MQTT 연결 =======================
+const client = mqtt.connect("wss://damoa.io:9002");
 
-    function levelToClass(level) {
-      if (level === "high") return "pill-high";
-      if (level === "med")  return "pill-med";
-      if (level === "low")  return "pill-low";
-      return "";
-    }
+client.on("connect", () => {
+    console.log("MQTT Connected!");
+    client.subscribe("ewha/2270056/risk");
+});
 
-    function setPill(el, level) {
-      el.classList.remove("pill-low", "pill-med", "pill-high");
-      el.classList.add(levelToClass(level));
-      el.textContent = (level || "-").toUpperCase();
-    }
-
-    function clampPercent(v) {
-      if (!isFinite(v)) return 0;
-      return Math.max(0, Math.min(100, v));
-    }
-
-    // AI coaching message logic
-    function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
-      // 기본 텍스트
-      let status = "안전 자세";
-      let title  = "좋은 자세를 유지하고 있어요";
-      let body   = "현재 측정된 각속도와 근활동이 모두 안정 범위에 있습니다. 지금과 같은 패턴을 유지하면 무릎 부상 위험이 낮아요.";
-      let guide  = "지금은 강도 조절보다 움직임 패턴을 기록하는 단계로 사용해 보세요.";
-
-      if (overall === "med") {
-        status = "주의 자세";
-        // 각속도 쪽이 문제
-        if (angLevel === "med" || angLevel === "high") {
-          title = "무릎 굽힘 속도가 조금 빠른 편이에요";
-          body  = "착지 순간이나 방향 전환할 때 무릎이 급하게 꺾이고 있을 가능성이 있어요. 한 번에 깊게 굽히기보다, 두 번에 나눠 부드럽게 굽히는 느낌으로 움직여 보세요.";
-          guide = "운동 중 3~5회 정도는 속도를 일부러 줄여서 ‘천천히, 조용하게 착지하기’를 연습하면 실제 경기 상황에서도 부드러운 패턴을 유지하는 데 도움이 됩니다.";
+// ======================= 그래프 준비 =======================
+function createChart(ctx) {
+    return new Chart(ctx, {
+        type: "line",
+        data: { labels: [], datasets: [{
+            data: [],
+            borderColor: "#0B3D2E",
+            borderWidth: 2,
+            tension: 0.2
+        }]},
+        options: {
+            animation: false,
+            scales: { x: { display: false }, y: { beginAtZero: true } }
         }
-        // RMS / MDF 쪽이 문제
-        else if (rmsLevel === "med" || mdfLevel === "med") {
-          title = "근 피로가 서서히 쌓이고 있어요";
-          body  = "RMS 또는 MDF 감소율이 중간 수준으로 올라가고 있어요. 근육이 버티긴 하지만 피로가 쌓이는 구간입니다. 세트 사이 휴식 시간을 1~2분 정도 충분히 확보해 주세요.";
-          guide = "연속 동작 횟수를 1~2세트 줄이고, 가벼운 스트레칭이나 폼롤러를 함께 사용하면 피로 누적을 늦출 수 있어요.";
-        }
-      }
+    });
+}
 
-      if (overall === "high") {
-        status = "위험 자세";
-        if (angLevel === "high") {
-          title = "무릎에 순간적인 큰 부하가 걸리고 있어요";
-          body  = "각속도 피크가 높게 측정되어, 착지/방향 전환 시 무릎에 급격한 회전 또는 굽힘이 발생하고 있습니다. 지금은 강도를 낮추거나 동작을 즉시 중단하는 것이 좋아요.";
-          guide = "• 점프 착지 시, 무릎이 ‘정면’을 보도록 유지하세요.\n• 상체를 조금 더 숙이고, 고관절(엉덩이 관절)로 충격을 나누어 받는 느낌을 연습해 보세요.\n• 통증이 느껴진다면 즉시 운동을 종료하고 아이싱 또는 휴식을 취하세요.";
-        } else if (rmsLevel === "high" || mdfLevel === "high") {
-          title = "근 피로가 많이 누적된 상태예요";
-          body  = "EMG 지표에서 피로 수준이 높게 나타납니다. 근육이 제 역할을 못 하면서 관절에 부담이 증가하는 구간입니다. 이 상태에서는 동작 정확도가 떨어져 부상 위험이 커질 수 있어요.";
-          guide = "지금은 강도를 낮추거나 세션을 종료하는 것이 좋습니다. 수분 보충과 5~10분 정도의 가벼운 보행, 스트레칭으로 회복 시간을 가져 주세요.";
-        }
-      }
+const angleChart = createChart(document.getElementById("angleChart"));
+const rmsChart   = createChart(document.getElementById("rmsChart"));
+const mdfChart   = createChart(document.getElementById("mdfChart"));
 
-      return { status, title, body, guide };
+// ======================= 스틱 피겨 =======================
+const canvas = document.getElementById("stickCanvas");
+const ctx = canvas.getContext("2d");
+
+function drawStick(angle) {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    const cx = canvas.width/2;
+    const cy = 60;
+
+    const L1 = 80, L2 = 80;
+
+    const rad = angle * Math.PI/180;
+
+    const hx = cx + L1 * Math.sin(rad);
+    const hy = cy + L1 * Math.cos(rad);
+
+    const fx = hx + L2 * Math.sin(rad);
+    const fy = hy + L2 * Math.cos(rad);
+
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#0B3D2E";
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(hx, hy);
+    ctx.lineTo(fx, fy);
+    ctx.stroke();
+}
+
+// ======================= 위험도 → 색/정책 =======================
+function pillHtml(level) {
+    const cls = level === "high" ? "high" :
+                level === "med" ? "med" : "low";
+    return `<span class="pill ${cls}">${level}</span>`;
+}
+
+function updateOverall(level) {
+    const bar = document.getElementById("risk-progress");
+    const pill = document.getElementById("overall-pill");
+
+    pill.className = `pill ${level}`;
+    pill.innerText = level;
+
+    bar.style.width = level === "high" ? "100%" :
+                      level === "med"  ? "60%" : "25%";
+}
+
+// ======================= AI 코멘트 생성 =======================
+function makeComment(risk, angle, rms, mdf) {
+    if (risk === "high") {
+        return "⚠ 무릎에 순간적인 큰 부하가 감지되었어요! 무릎을 더 구부리거나, 착지 충격을 완화하는 자세를 시도해보세요.";
+    }
+    if (risk === "med") {
+        return "주의! 움직임이 다소 불안정해지고 있어요. 중심을 잡고 천천히 움직이는 것이 좋아요.";
+    }
+    return "💚 안정적이에요! 지금 자세를 유지하면 부상 위험이 낮아요.";
+}
+
+// ======================= MQTT 메시지 수신 =======================
+client.on("message", (topic, msg) => {
+    const d = JSON.parse(msg.toString());
+
+    // 그래프 업데이트
+    angleChart.data.labels.push("");
+    rmsChart.data.labels.push("");
+    mdfChart.data.labels.push("");
+
+    angleChart.data.datasets[0].data.push(d.angleRate_peak_deg_s);
+    rmsChart.data.datasets[0].data.push(d.emg_rms_drop_pct);
+    mdfChart.data.datasets[0].data.push(d.mdf_drop_pct);
+
+    angleChart.update();
+    rmsChart.update();
+    mdfChart.update();
+
+    // Stick figure (using angle)
+    drawStick(d.angleRate_peak_deg_s/3);
+
+    // 카드 업데이트
+    document.getElementById("val-angle").innerText = d.angleRate_peak_deg_s.toFixed(1);
+    document.getElementById("val-rms").innerText   = d.emg_rms_drop_pct.toFixed(1);
+    document.getElementById("val-mdf").innerText   = d.mdf_drop_pct.toFixed(1);
+    document.getElementById("val-local").innerText = d.risk_local.imu2_gyr;
+
+    document.getElementById("risk-angle").innerHTML = pillHtml(d.risk.angleRate);
+    document.getElementById("risk-rms").innerHTML   = pillHtml(d.risk.rmsDrop);
+    document.getElementById("risk-mdf").innerHTML   = pillHtml(d.risk.mdfDrop);
+    document.getElementById("risk-local").innerHTML = pillHtml(d.risk_local.imu2_gyr);
+
+    // Overall
+    updateOverall(d.risk.overall);
+
+    // Raw data
+    if (d.raw) {
+        document.getElementById("raw-gx1").innerText = d.raw.i1_gx;
+        document.getElementById("raw-gy1").innerText = d.raw.i1_gy;
+        document.getElementById("raw-gz1").innerText = d.raw.i1_gz;
+        document.getElementById("raw-gx2").innerText = d.raw.i2_gx;
+        document.getElementById("raw-gy2").innerText = d.raw.i2_gy;
+        document.getElementById("raw-gz2").innerText = d.raw.i2_gz;
+        document.getElementById("raw-emg").innerText = d.raw.emg_env;
     }
 
-    function overallDescText(overall) {
-      if (overall === "high") {
-        return "현재 센서 기준으로 부상 위험도가 높은 상태입니다. 강도를 즉시 줄이거나 운동을 중단하고, 자세와 피로도를 함께 점검해 주세요.";
-      }
-      if (overall === "med") {
-        return "일부 지표에서 위험 신호가 감지되었습니다. 동작 속도·착지 패턴·근 피로 중 어느 부분이 문제인지 오른쪽 가이드를 참고하여 조정해 보세요.";
-      }
-      return "현재는 비교적 안정적인 상태입니다. 움직임 패턴과 피로도를 장시간 모니터링하여, 위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.";
-    }
+    // AI Comment
+    document.getElementById("ai-comment").innerText =
+        makeComment(d.risk.overall, d.angleRate_peak_deg_s, d.emg_rms_drop_pct, d.mdf_drop_pct);
+});
 
-    // ===== Main update =====
-    function updateDashboard(payload) {
-      console.log("risk payload:", payload);
+</script>
 
-      const ts = payload.ts || Date.now();
-      const date = new Date(ts);
-      const hh = String(date.getHours()).padStart(2, "0");
-      const mm = String(date.getMinutes()).padStart(2, "0");
-      const ss = String(date.getSeconds()).padStart(2, "0");
-      document.getElementById("lastUpdated").textContent = `${hh}:${mm}:${ss}`;
-
-      // values
-      const angleRate = payload.angleRate_peak_deg_s;
-      const rmsDrop = payload.emg_rms_drop_pct;
-      const mdfDrop = payload.mdf_drop_pct;
-      const risk = payload.risk || {};
-      const riskLocal = (payload.risk_local || {}).imu2_gyr;
-
-      // overall pill
-      const overall = risk.overall || "low";
-      const overallPill = document.getElementById("overallPill");
-      overallPill.classList.remove("pill-low", "pill-med", "pill-high");
-      overallPill.classList.add(levelToClass(overall));
-      overallPill.textContent = overall.toUpperCase();
-
-      // overall description
-      document.getElementById("overallDesc").textContent = overallDescText(overall);
-
-      // ---- angle rate
-      document.getElementById("angleRateVal").textContent =
-        fmtNumber(angleRate, 1);
-      const angleLevel = risk.angleRate || "unknown";
-      const anglePill = document.getElementById("angleRateLevel");
-      anglePill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
-      anglePill.textContent = angleLevel;
-
-      // marker: max 250 deg/s
-      const angleMax = 250;
-      let anglePercent = 0;
-      if (isFinite(angleRate)) anglePercent = clampPercent((angleRate / angleMax) * 100);
-      document.getElementById("angleRateMarker").style.left = anglePercent + "%";
-
-      // ---- RMS drop
-      document.getElementById("rmsDropVal").textContent =
-        rmsDrop == null ? "-" : fmtNumber(rmsDrop, 1);
-      const rmsLevel = risk.rmsDrop || "unknown";
-      const rmsPill = document.getElementById("rmsDropLevel");
-      rmsPill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (rmsLevel !== "unknown") rmsPill.classList.add(levelToClass(rmsLevel));
-      rmsPill.textContent = rmsLevel;
-
-      const rmsMax = 80;
-      let rmsPercent = 0;
-      if (isFinite(rmsDrop)) rmsPercent = clampPercent((rmsDrop / rmsMax) * 100);
-      document.getElementById("rmsDropMarker").style.left = rmsPercent + "%";
-
-      // ---- MDF drop
-      document.getElementById("mdfDropVal").textContent =
-        mdfDrop == null ? "-" : fmtNumber(mdfDrop, 1);
-      const mdfLevel = risk.mdfDrop || "unknown";
-      const mdfPill = document.getElementById("mdfDropLevel");
-      mdfPill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (mdfLevel !== "unknown") mdfPill.classList.add(levelToClass(mdfLevel));
-      mdfPill.textContent = mdfLevel;
-
-      const mdfMax = 40;
-      let mdfPercent = 0;
-      if (isFinite(mdfDrop)) mdfPercent = clampPercent((mdfDrop / mdfMax) * 100);
-      document.getElementById("mdfDropMarker").style.left = mdfPercent + "%";
-
-      // ---- Local risk
-      const textEl = document.getElementById("localRiskText");
-      const pillEl = document.getElementById("localRiskPill");
-
-      if (riskLocal) {
-        textEl.textContent = riskLocal;
-        pillEl.style.display = "inline-flex";
-        pillEl.textContent = riskLocal.toUpperCase();
-      } else {
-        textEl.textContent = "-";
-        pillEl.style.display = "none";
-      }
-
-      // ---- Guide & Coaching
-      const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
-
-      document.getElementById("guideText").textContent = coach.guide;
-
-      document.getElementById("coachStatusText").textContent = coach.status;
-      document.getElementById("coachTitle").textContent = coach.title;
-      document.getElementById("coachBody").textContent = coach.body;
-
-      // status pill 색은 overall 기준
-      const coachPill = document.getElementById("coachStatusPill");
-      coachPill.style.background = (overall === "high")
-        ? "#FFE1E1"
-        : (overall === "med")
-          ? "#FFF3D6"
-          : "#E7F4EF";
-      const dot = coachPill.querySelector(".coach-status-pill-dot");
-      dot.style.background = (overall === "high")
-        ? "#E53935"
-        : (overall === "med")
-          ? "#FFC107"
-          : "#18A05D";
-    }
-  </script>
 </body>
 </html>
