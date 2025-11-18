@@ -2,223 +2,316 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>안다치조 실시간 대시보드</title>
-
-<!-- MQTT -->
+<title>안다치조 실시간 무릎 위험도 대시보드</title>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        font-family: Pretendard, sans-serif;
-        background: #f5f6f7;
-    }
-    header {
-        background: #0b3d2e;
-        color: white;
-        padding: 16px 22px;
-        font-size: 24px;
-        font-weight: 700;
-    }
-    .container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        padding: 20px;
-        gap: 20px;
-    }
-    .card {
-        background: white;
-        padding: 18px;
-        border-radius: 12px;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.08);
-    }
-    .card-title {
-        font-size: 18px;
-        font-weight: 700;
-        margin-bottom: 10px;
-        color: #0b3d2e;
-    }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 6px;
-    }
-    th, td {
-        border-bottom: 1px solid #eee;
-        padding: 6px;
-        font-size: 14px;
-    }
-    th {
-        background: #eef3ef;
-    }
-    .pill {
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-weight: 600;
-        color: white;
-    }
-    .low { background: #2ecc71; }
-    .med { background: #f1c40f; color: black; }
-    .high { background: #e74c3c; }
+  body {
+    font-family: 'Pretendard', sans-serif;
+    background: #f6f8f7;
+    margin: 0;
+    padding: 0;
+  }
 
-    #stickCanvas {
-        width: 100%;
-        height: 260px;
-        background: #fafafa;
-        border-radius: 10px;
-    }
+  header {
+    background: #0c513f;
+    color: white;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  .logo {
+    font-size: 36px;
+    font-weight: 900;
+    color: #b7e4c7;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 20px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  .title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #0c513f;
+  }
+
+  .value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #0c513f;
+  }
+
+  .pill {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 700;
+    display: inline-block;
+    margin-left: 10px;
+  }
+
+  .pill.low { background:#d1f7d1; color:#0c513f; }
+  .pill.med { background:#ffeeb5; color:#8a6d00; }
+  .pill.high { background:#ffb3b3; color:#7a0000; }
+
+  .risk-bar {
+    height: 18px;
+    width: 100%;
+    border-radius: 10px;
+    background: #ddd;
+    overflow: hidden;
+    margin-top: 10px;
+  }
+
+  .risk-bar-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.4s ease;
+    border-radius: 10px;
+    background: #0c513f;
+  }
+
+  /* 3D 스틱 피겨 캔버스 */
+  canvas {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    margin-top: 10px;
+  }
+
+  /* 코멘트 */
+  .comment {
+    font-size: 17px;
+    color: #333;
+    font-weight: 500;
+    margin-top: 10px;
+  }
 </style>
-
 </head>
+
 <body>
 
-<header>안다치조 실시간 부상예방 대시보드</header>
+<header>
+  <div class="logo">🦵 안다치조</div>
+  <h1>실시간 무릎 부상 위험도 대시보드</h1>
+</header>
 
 <div class="container">
 
-    <!-- ⭐ 새로 추가된 Stick Figure 카드 -->
-    <div class="card">
-        <div class="card-title">실시간 자세 (Stick Figure)</div>
-        <canvas id="stickCanvas"></canvas>
+  <!-- 종합 위험도 카드 -->
+  <div class="card">
+    <div class="title">종합 위험도</div>
+    <div id="overall_value" class="value">-</div>
+    <div id="overall_pill" class="pill low">-</div>
+    <div class="risk-bar">
+      <div id="risk_bar_fill" class="risk-bar-fill"></div>
     </div>
+    <div id="comment" class="comment"></div>
+  </div>
 
-    <!-- 기존 구성 유지: 전체 위험도 카드 -->
-    <div class="card">
-        <div class="card-title">
-            전체 위험도 <span id="overall-pill" class="pill low">low</span>
-        </div>
-        <div style="height:20px; background:#e6efe8; border-radius:10px; margin-top:10px; overflow:hidden;">
-            <div id="risk-progress" style="
-                height:100%; width:25%; 
-                background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
-                transition:0.5s;">
-            </div>
-        </div>
-    </div>
+  <!-- 무릎 상대각도 + 3D Stick Figure -->
+  <div class="card">
+    <div class="title">무릎 상대각도 (IMU Relative Angle)</div>
+    <div id="knee_angle_value" class="value">-°</div>
+    <canvas id="stickFigure" width="320" height="260"></canvas>
+  </div>
 
-    <!-- 그래프 3개 (기존 그대로) -->
-    <div class="card"><div class="card-title">각속도 변화</div><canvas id="angleChart"></canvas></div>
-    <div class="card"><div class="card-title">EMG RMS Drop</div><canvas id="rmsChart"></canvas></div>
-    <div class="card"><div class="card-title">EMG MDF Drop</div><canvas id="mdfChart"></canvas></div>
-
-    <!-- 위험도 테이블 (기존) -->
-    <div class="card">
-        <div class="card-title">세부 위험도</div>
-        <table>
-            <tr><th>지표</th><th>값</th><th>위험도</th></tr>
-            <tr><td>각속도 peak</td><td id="val-angle">-</td><td id="risk-angle">-</td></tr>
-            <tr><td>RMS drop</td><td id="val-rms">-</td><td id="risk-rms">-</td></tr>
-            <tr><td>MDF drop</td><td id="val-mdf">-</td><td id="risk-mdf">-</td></tr>
-            <tr><td>Local(IMU2)</td><td id="val-local">-</td><td id="risk-local">-</td></tr>
-        </table>
-    </div>
+  <!-- 세부 지표 카드 -->
+  <div class="card">
+    <div class="title">세부 위험도 요소</div>
+    <p>각속도: <span id="ang_val">-</span> <span id="ang_pill" class="pill low">-</span></p>
+    <p>EMG RMS Drop: <span id="rms_val">-</span> <span id="rms_pill" class="pill low">-</span></p>
+    <p>MDF Drop: <span id="mdf_val">-</span> <span id="mdf_pill" class="pill low">-</span></p>
+  </div>
 
 </div>
 
 <script>
-// ==================== MQTT 연결 ====================
-const client = mqtt.connect("wss://damoa.io:9002");
+/* ================================
+      MQTT 연결
+================================ */
+
+const broker = "wss://damoa.io:9002";
+const topic  = "ewha/2270056/risk";
+
+const clientId = "dashboard_" + Math.random().toString(16).substr(2, 8);
+const client = mqtt.connect(broker, { clientId });
+
 client.on("connect", () => {
-    console.log("MQTT connected!");
-    client.subscribe("ewha/2270056/risk");
+  console.log("MQTT Connected");
+  client.subscribe(topic);
 });
 
-// ==================== 그래프 준비 (기존) ====================
-function createChart(ctx) {
-    return new Chart(ctx, {
-        type:"line",
-        data:{ labels:[], datasets:[{
-            data:[], borderColor:"#0b3d2e", borderWidth:2, tension:0.2
-        }]},
-        options:{ animation:false, scales:{ x:{display:false}, y:{beginAtZero:true} } }
-    });
-}
-
-const angleChart = createChart(document.getElementById("angleChart"));
-const rmsChart   = createChart(document.getElementById("rmsChart"));
-const mdfChart   = createChart(document.getElementById("mdfChart"));
-
-// ==================== ⭐ Stick Figure 함수 추가 ====================
-const sc = document.getElementById("stickCanvas");
-const ctx = sc.getContext("2d");
-
-function drawStick(angle){
-    ctx.clearRect(0,0,sc.width,sc.height);
-
-    const cx = sc.width/2;
-    const cy = 70;
-
-    const L1 = 80, L2 = 80;
-
-    const rad = angle * Math.PI/180;
-
-    const hx = cx + L1 * Math.sin(rad);
-    const hy = cy + L1 * Math.cos(rad);
-
-    const fx = hx + L2 * Math.sin(rad);
-    const fy = hy + L2 * Math.cos(rad);
-
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "#0b3d2e";
-
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(hx, hy);
-    ctx.lineTo(fx, fy);
-    ctx.stroke();
-}
-
-// ==================== 위험도 색 (기존) ====================
-function pillHtml(level){
-    const cls = (level==="high")?"high":(level==="med")?"med":"low";
-    return `<span class="pill ${cls}">${level}</span>`;
-}
-
-// ==================== MQTT 데이터 수신 ====================
 client.on("message", (topic, msg) => {
-    const d = JSON.parse(msg.toString());
-
-    // 그래프 업데이트 (기존)
-    angleChart.data.labels.push("");
-    rmsChart.data.labels.push("");
-    mdfChart.data.labels.push("");
-
-    angleChart.data.datasets[0].data.push(d.angleRate_peak_deg_s);
-    rmsChart.data.datasets[0].data.push(d.emg_rms_drop_pct);
-    mdfChart.data.datasets[0].data.push(d.mdf_drop_pct);
-
-    angleChart.update();
-    rmsChart.update();
-    mdfChart.update();
-
-    // ⭐ StickFigure 업데이트
-    drawStick(d.angleRate_peak_deg_s / 3);
-
-    // 위험도 테이블 업데이트
-    document.getElementById("val-angle").innerText = d.angleRate_peak_deg_s.toFixed(1);
-    document.getElementById("val-rms").innerText   = d.emg_rms_drop_pct.toFixed(1);
-    document.getElementById("val-mdf").innerText   = d.mdf_drop_pct.toFixed(1);
-    document.getElementById("val-local").innerText = d.risk_local.imu2_gyr;
-
-    document.getElementById("risk-angle").innerHTML = pillHtml(d.risk.angleRate);
-    document.getElementById("risk-rms").innerHTML   = pillHtml(d.risk.rmsDrop);
-    document.getElementById("risk-mdf").innerHTML   = pillHtml(d.risk.mdfDrop);
-    document.getElementById("risk-local").innerHTML = pillHtml(d.risk_local.imu2_gyr);
-
-    // 전체 위험도 ProgressBar
-    const bar = document.getElementById("risk-progress");
-    const pill = document.getElementById("overall-pill");
-
-    pill.className = `pill ${d.risk.overall}`;
-    pill.innerText = d.risk.overall;
-
-    bar.style.width = (d.risk.overall==="high")?"100%":
-                      (d.risk.overall==="med") ?"60%":"25%";
+  const data = JSON.parse(msg.toString());
+  updateDashboard(data);
 });
+
+/* ===============================
+     UI 업데이트 함수
+================================ */
+
+function updateDashboard(d) {
+
+  const risk = d.risk?.overall || "unknown";
+  const ang  = d.angleRate_peak_deg_s;
+  const rms  = d.emg_rms_drop_pct;
+  const mdf  = d.mdf_drop_pct;
+  const knee = d.knee_angle_deg;   // Colab에서 보내는 상대 무릎각 (deg)
+
+  // 종합 위험도 값 + pill
+  document.getElementById("overall_value").innerText = risk.toUpperCase();
+  const pill = document.getElementById("overall_pill");
+  pill.className = "pill " + risk;
+  pill.innerText = risk;
+
+  // 위험도 bar (0~100%)
+  const bar = document.getElementById("risk_bar_fill");
+  const order = {low:10, med:50, high:100, unknown:0};
+  bar.style.width = (order[risk] || 0) + "%";
+
+  // 코멘트
+  const c = document.getElementById("comment");
+  c.innerHTML = getComment(risk, ang, rms, mdf);
+
+  // 무릎 각도 + 3D stick figure
+  if (knee !== null && !isNaN(knee)) {
+    document.getElementById("knee_angle_value").innerText = knee.toFixed(1) + "°";
+    drawStickFigure3D(knee);
+  }
+
+  // 세부 위험도 숫자 & pill
+  setDetail("ang", ang, d.risk?.angleRate);
+  setDetail("rms", rms, d.risk?.rmsDrop);
+  setDetail("mdf", mdf, d.risk?.mdfDrop);
+}
+
+function setDetail(prefix, value, riskLevel) {
+  document.getElementById(prefix + "_val").innerText =
+    (value !== null && !isNaN(value)) ? value.toFixed(1) : "-";
+  const pill = document.getElementById(prefix + "_pill");
+  pill.className = "pill " + (riskLevel || "low");
+  pill.innerText = riskLevel || "-";
+}
+
+/* ===============================
+    3D 느낌 스틱 피겨 그리기
+================================ */
+function drawStickFigure3D(kneeDeg) {
+  const canvas = document.getElementById("stickFigure");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // 기준 좌표/길이
+  const centerX = canvas.width / 2;
+  const hipY = 80;
+  const torsoLen = 60;
+  const thighLen = 70;
+  const shankLen = 70;
+
+  // 몸통/머리
+  const headX = centerX;
+  const headY = hipY - torsoLen;
+  const hipX  = centerX;
+  const hipY2 = hipY;
+
+  // 무릎은 항상 아래로
+  const kneeY = hipY2 + thighLen;
+  const rad = kneeDeg * Math.PI / 180;
+
+  // 앞다리(우리 쪽)
+  const frontHip = { x: hipX + 8, y: hipY2 };  // 살짝 오른쪽
+  const frontKnee = { x: frontHip.x, y: hipY2 + thighLen };
+  const frontAnkle = {
+    x: frontKnee.x + shankLen * Math.sin(rad),
+    y: frontKnee.y + shankLen * Math.cos(rad)
+  };
+
+  // 뒷다리(먼 쪽) – 조금 짧고 색 연하게
+  const backHip = { x: hipX - 6, y: hipY2 + 4 };
+  const backKnee = { x: backHip.x, y: backHip.y + (thighLen - 6) };
+  const backAnkle = {
+    x: backKnee.x + (shankLen - 10) * Math.sin(rad * 0.9),
+    y: backKnee.y + (shankLen - 10) * Math.cos(rad * 0.9)
+  };
+
+  // 바닥 타원 (발 아래 그림자)
+  ctx.fillStyle = "rgba(0,0,0,0.05)";
+  ctx.beginPath();
+  ctx.ellipse(centerX, hipY2 + thighLen + shankLen + 20, 80, 18, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // 몸통
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "#0c513f";
+  ctx.beginPath();
+  ctx.moveTo(headX, headY);
+  ctx.lineTo(hipX, hipY2);
+  ctx.stroke();
+
+  // 머리
+  ctx.fillStyle = "#0c513f";
+  ctx.beginPath();
+  ctx.arc(headX, headY-12, 10, 0, Math.PI*2);
+  ctx.fill();
+
+  // 뒷다리
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(12, 81, 63, 0.4)";
+  ctx.beginPath();
+  ctx.moveTo(backHip.x, backHip.y);
+  ctx.lineTo(backKnee.x, backKnee.y);
+  ctx.lineTo(backAnkle.x, backAnkle.y);
+  ctx.stroke();
+
+  // 앞다리
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = "#0c513f";
+  ctx.beginPath();
+  ctx.moveTo(frontHip.x, frontHip.y);
+  ctx.lineTo(frontKnee.x, frontKnee.y);
+  ctx.lineTo(frontAnkle.x, frontAnkle.y);
+  ctx.stroke();
+
+  // 관절(앞다리) 동그라미
+  ctx.fillStyle = "#0c513f";
+  ctx.beginPath(); ctx.arc(frontHip.x, frontHip.y, 6, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(frontKnee.x, frontKnee.y, 6, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(frontAnkle.x, frontAnkle.y, 6, 0, Math.PI*2); ctx.fill();
+}
+
+/* ===============================
+     AI-like 코멘트 생성
+================================ */
+function getComment(risk, angrate, rms, mdf) {
+  if (risk === "high")
+    return "⚠️ 무릎이 매우 불안정합니다. <b>속도를 줄이고</b> 동작을 천천히 수행하세요.";
+  if (risk === "med")
+    return "주의가 필요합니다. 자세 흔들림이 있으니 <b>무릎 정렬</b>을 다시 맞춰보세요.";
+  if (risk === "low")
+    return "아주 안정적입니다! 😊 <b>지금 자세 그대로 유지</b>해 주세요.";
+  return "데이터 수신 대기 중…";
+}
 </script>
 
 </body>
