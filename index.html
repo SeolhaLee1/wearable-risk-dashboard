@@ -1,110 +1,728 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<title>Wearable Risk Dashboard</title>
+  <meta charset="utf-8" />
+  <title>Wearable Knee Risk Monitor - Ewha</title>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- 폰트 (선택) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
 
-<style>
-body { font-family: Arial; background:#fafafa; padding:20px; }
-.card { padding:15px; border-radius:10px; margin:10px 0; }
-#riskBox { font-size:32px; font-weight:bold; color:white; padding:20px; border-radius:15px; }
-</style>
+  <!-- Chart.js & MQTT.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
+  <style>
+    :root {
+      --ewha-green: #006e51;
+      --ewha-green-light: #e4f2ec;
+      --danger-red: #e53935;
+      --warn-yellow: #f9a825;
+      --safe-green: #43a047;
+      --bg-light: #f5f7f9;
+      --card-bg: #ffffff;
+      --border-soft: #dde3ea;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg-light);
+      color: #222;
+    }
+
+    header {
+      background: var(--ewha-green);
+      color: white;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header .title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0.02em;
+    }
+
+    header span.subtitle {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    header .status-pill {
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      font-size: 12px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto 40px;
+      padding: 0 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+      border: 1px solid var(--border-soft);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--ewha-green);
+    }
+
+    .card-subtitle {
+      font-size: 11px;
+      color: #777;
+    }
+
+    .risk-main {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #riskBox {
+      border-radius: 18px;
+      padding: 18px 20px;
+      color: white;
+      background: var(--ewha-green);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #riskBox .risk-label {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    #riskBox .risk-value {
+      font-size: 26px;
+      font-weight: 700;
+    }
+
+    #riskBox .risk-details {
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 10px;
+    }
+
+    .metric-chip {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: var(--ewha-green-light);
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .metric-label {
+      font-weight: 500;
+      color: #355;
+    }
+
+    .metric-main {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: #555;
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      margin-left: 4px;
+      vertical-align: middle;
+      color: white;
+    }
+    .pill.low { background: var(--safe-green); }
+    .pill.med { background: var(--warn-yellow); }
+    .pill.high { background: var(--danger-red); }
+    .pill.unknown { background: #777; }
+
+    .meta {
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    canvas {
+      width: 100%;
+    }
+
+    .legend-inline {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    /* 가이드 / 코치 박스 공통 스타일 */
+    .guide-box {
+      background:#f0f7f4;
+      border-left:5px solid var(--ewha-green);
+      border-radius:12px;
+      padding:14px 16px;
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .coach-box {
+      background:#ffffff;
+      border-left:5px solid #9e9e9e;
+      border-radius:12px;
+      padding:14px 16px;
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .coach-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .coach-tag {
+      display:inline-block;
+      font-size:10px;
+      padding:2px 6px;
+      border-radius:999px;
+      background:#eeeeee;
+      margin-bottom:6px;
+    }
+  </style>
 </head>
 <body>
 
-<h2>🏃 Wearable Real-time Dashboard</h2>
+<header>
+  <div class="title-group">
+    <h1>Wearable Knee Risk Monitor</h1>
+    <span class="subtitle">Ewha Human-Machine-Bio Engineering · 실시간 IMU + EMG 기반 위험도 & 자세 코칭</span>
+  </div>
+  <div class="status-pill" id="connStatus">MQTT 연결 대기 중…</div>
+</header>
 
-<div id="riskBox">Risk: -</div>
+<div class="container">
+  <!-- 왼쪽: 위험도 & 가이드 & AI 코치 -->
+  <div class="risk-main">
+    <!-- 종합 위험도 카드 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="dot"></div>
+          실시간 종합 위험도
+        </div>
+      </div>
 
-<canvas id="imuChart" height="100"></canvas>
-<canvas id="emgChart" height="100"></canvas>
+      <div id="riskBox">
+        <div class="risk-label">현재 상태</div>
+        <div class="risk-value" id="riskText">데이터 대기 중…</div>
+        <div class="risk-details" id="riskDetail">
+          정교한 각속도·근전도 분석을 위해 충분한 데이터가 쌓이는 중입니다.
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-chip">
+          <div class="metric-label">무릎 상대 각속도 피크</div>
+          <div class="metric-main">
+            <span id="angleRateVal">-</span>
+            <span style="font-size:11px;">deg/s</span>
+          </div>
+          <div class="metric-sub">
+            각속도 등급:
+            <span id="angleRateLevel" class="pill unknown">-</span>
+          </div>
+        </div>
+
+        <div class="metric-chip">
+          <div class="metric-label">EMG RMS Drop</div>
+          <div class="metric-main">
+            <span id="rmsDropVal">-</span>
+            <span style="font-size:11px;">%</span>
+          </div>
+          <div class="metric-sub">
+            근 피로도(진폭 기준):
+            <span id="rmsDropLevel" class="pill unknown">-</span>
+          </div>
+        </div>
+
+        <div class="metric-chip">
+          <div class="metric-label">EMG MDF Drop</div>
+          <div class="metric-main">
+            <span id="mdfDropVal">-</span>
+            <span style="font-size:11px;">%</span>
+          </div>
+          <div class="metric-sub">
+            근 피로도(주파수 기준):
+            <span id="mdfDropLevel" class="pill unknown">-</span>
+          </div>
+        </div>
+
+        <div class="metric-chip">
+          <div class="metric-label">Local Risk (IMU2 Gyro)</div>
+          <div class="metric-main">
+            <span id="localRiskVal">-</span>
+          </div>
+          <div class="metric-sub">ESP32에서 직접 계산한 간단 위험도</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div>마지막 업데이트: <span id="lastTs">-</span></div>
+        <div>토픽: <code>ewha/2270056/raw</code> · <code>ewha/2270056/risk</code></div>
+      </div>
+    </div>
+
+    <!-- 부상 예방 가이드 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="dot"></div>
+          부상 예방 가이드
+        </div>
+      </div>
+      <div id="guideBox" class="guide-box">
+        <b>현재 상태 파악 중…</b><br>
+        센서 데이터가 충분히 수집되면 개인 맞춤 가이드가 제공됩니다.
+      </div>
+    </div>
+
+    <!-- AI 자세 교정 코멘트 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="dot"></div>
+          AI 자세 교정 코멘트
+        </div>
+      </div>
+      <div id="coachBox" class="coach-box">
+        <div class="coach-tag">기본</div>
+        <div class="coach-title">자세 분석 대기 중</div>
+        <div id="coachBody">
+          무릎 주위 IMU와 EMG 데이터 패턴을 바탕으로, 동작 속도·피로도·비틀림 여부를 분석하여
+          자세 교정 코멘트를 제공합니다.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 오른쪽: 그래프 영역 -->
+  <div class="charts">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="dot"></div>
+          IMU2 각속도 (Gyro magnitude)
+        </div>
+        <div class="card-subtitle">무릎 주변 IMU2에서 측정된 3축 자이로의 벡터 크기</div>
+      </div>
+      <canvas id="imuChart" height="120"></canvas>
+      <div class="legend-inline">
+        값이 순간적으로 큰 spike를 보이면 고위험 동작(급격한 굴곡/신전)일 수 있습니다.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="dot"></div>
+          EMG Envelope (근전도 포락선)
+        </div>
+        <div class="card-subtitle">근육 활성도의 저주파 성분 (Rectified + Low-pass)</div>
+      </div>
+      <canvas id="emgChart" height="120"></canvas>
+      <div class="legend-inline">
+        EMG Envelope가 baseline 대비 얼마나 떨어지는지(RMS·MDF drop)는 Colab에서 정밀 계산됩니다.
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-const brokerUrl = "wss://damoa.io:9002";
-const clientId = "webdash-" + Math.random().toString(16).substr(2, 8);
+  // ===== MQTT 설정 =====
+  const brokerUrl = "wss://damoa.io:9002";
+  const clientId  = "ewha-webdash-" + Math.random().toString(16).substr(2, 8);
+  const RAW_TOPIC  = "ewha/2270056/raw";
+  const RISK_TOPIC = "ewha/2270056/risk";
 
-const client = mqtt.connect(brokerUrl, { clientId });
+  const connStatusEl   = document.getElementById("connStatus");
+  const riskBox        = document.getElementById("riskBox");
+  const riskTextEl     = document.getElementById("riskText");
+  const riskDetailEl   = document.getElementById("riskDetail");
+  const angleRateVal   = document.getElementById("angleRateVal");
+  const rmsDropVal     = document.getElementById("rmsDropVal");
+  const mdfDropVal     = document.getElementById("mdfDropVal");
+  const angleRateLvlEl = document.getElementById("angleRateLevel");
+  const rmsDropLvlEl   = document.getElementById("rmsDropLevel");
+  const mdfDropLvlEl   = document.getElementById("mdfDropLevel");
+  const localRiskVal   = document.getElementById("localRiskVal");
+  const lastTsEl       = document.getElementById("lastTs");
+  const guideBox       = document.getElementById("guideBox");
+  const coachBox       = document.getElementById("coachBox");
+  const coachBody      = document.getElementById("coachBody");
 
-// 1) 차트 기본 세팅 ===========================
-const imuCtx = document.getElementById("imuChart").getContext("2d");
-const emgCtx = document.getElementById("emgChart").getContext("2d");
+  // ===== Chart.js 설정 =====
+  const imuCtx = document.getElementById("imuChart").getContext("2d");
+  const emgCtx = document.getElementById("emgChart").getContext("2d");
 
-const imuChart = new Chart(imuCtx, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      { label:"IMU2 Gyro Magnitude", data:[], borderColor:"blue" }
-    ]
-  }
-});
-
-const emgChart = new Chart(emgCtx, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      { label:"EMG Envelope", data:[], borderColor:"red" }
-    ]
-  }
-});
-
-// 2) MQTT 연결 ===============================
-client.on("connect", () => {
-  console.log("MQTT Connected!");
-  client.subscribe("ewha/2270056/raw");
-  client.subscribe("ewha/2270056/risk");
-});
-
-// 3) 메시지 수신 ==============================
-client.on("message", (topic, payload) => {
-  let msg;
-  try { msg = JSON.parse(payload.toString()); } catch { return; }
-
-  // ---- raw 센서값 반영 ----
-  if (topic.includes("raw")) {
-    const t = msg.ts;
-    const g2x = parseFloat(msg.imu2?.gx);
-    const g2y = parseFloat(msg.imu2?.gy);
-    const g2z = parseFloat(msg.imu2?.gz);
-    const emg = parseFloat(msg.emg?.env);
-
-    const gmag = Math.sqrt(g2x*g2x + g2y*g2y + g2z*g2z);
-
-    imuChart.data.labels.push(t);
-    imuChart.data.datasets[0].data.push(gmag);
-    if (imuChart.data.labels.length > 100) {
-      imuChart.data.labels.shift();
-      imuChart.data.datasets[0].data.shift();
+  const imuChart = new Chart(imuCtx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Gyro |ω| (deg/s)",
+        data: [],
+        borderWidth: 1.5,
+        tension: 0.15
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { display: false },
+        y: { title: { display: true, text: "deg/s" } }
+      },
+      plugins: {
+        legend: { display: true }
+      }
     }
-    imuChart.update();
+  });
 
-    emgChart.data.labels.push(t);
-    emgChart.data.datasets[0].data.push(emg);
-    if (emgChart.data.labels.length > 100) {
-      emgChart.data.labels.shift();
-      emgChart.data.datasets[0].data.shift();
+  const emgChart = new Chart(emgCtx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "EMG Envelope",
+        data: [],
+        borderWidth: 1.5,
+        tension: 0.15
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { display: false },
+        y: { title: { display: true, text: "Amplitude (a.u.)" } }
+      },
+      plugins: {
+        legend: { display: true }
+      }
     }
-    emgChart.update();
+  });
+
+  function pushPoint(chart, x, y, maxLen=150) {
+    chart.data.labels.push(x);
+    chart.data.datasets[0].data.push(y);
+    if (chart.data.labels.length > maxLen) {
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+    }
+    chart.update("none");
   }
 
-  // ---- risk 컬러 박스 업데이트 ----
-  if (topic.includes("risk")) {
-    const risk = msg?.risk?.overall || "-";
-    const box = document.getElementById("riskBox");
-    box.innerHTML = "Risk: " + risk;
-
-    if (risk == "high") box.style.background = "#e60000";
-    else if (risk == "med") box.style.background = "#e6b800";
-    else if (risk == "low") box.style.background = "#00b300";
-    else box.style.background = "#777";
+  // ===== 위험도 UI =====
+  function setRiskBox(overall) {
+    let text = "-";
+    let bg   = "#777";
+    if (overall === "high") {
+      text = "HIGH · 위험";
+      bg   = "#e53935";
+    } else if (overall === "med") {
+      text = "MEDIUM · 주의";
+      bg   = "#f9a825";
+    } else if (overall === "low") {
+      text = "LOW · 안전 범위";
+      bg   = "#43a047";
+    } else {
+      text = "데이터 부족 / 계산 대기";
+      bg   = "#777";
+    }
+    riskBox.style.background = bg;
+    riskTextEl.textContent = text;
   }
-});
+
+  function setLevelPill(el, level) {
+    el.className = "pill " + (level || "unknown");
+    el.textContent = level || "-";
+  }
+
+  function fmtVal(v, digits=1) {
+    if (v === null || v === undefined || isNaN(v)) return "-";
+    return Number(v).toFixed(digits);
+  }
+
+  function fmtTs(ts) {
+    if (!ts) return "-";
+    try {
+      const ms = Number(ts);
+      const d = new Date(ms);
+      return d.toLocaleTimeString("ko-KR", { hour12:false }) + ` · ${d.toLocaleDateString("ko-KR")}`;
+    } catch {
+      return String(ts);
+    }
+  }
+
+  // ===== 부상 예방 가이드 업데이트 =====
+  function updateGuide(overall, risk) {
+    let cause = "";
+    let action = "";
+
+    if (risk.angleRate === "high") {
+      cause += "• 무릎 각속도가 기준보다 높아 급격한 굴곡/신전 위험이 있습니다.<br>";
+    } else if (risk.angleRate === "med") {
+      cause += "• 무릎 움직임이 다소 빠른 편입니다. 과도한 비틀림에 주의하세요.<br>";
+    }
+
+    if (risk.rmsDrop === "high") {
+      cause += "• EMG RMS drop이 크게 나타나 근육 피로도가 상당히 높습니다.<br>";
+    } else if (risk.rmsDrop === "med") {
+      cause += "• 근 피로가 누적되고 있습니다.<br>";
+    }
+
+    if (risk.mdfDrop === "high") {
+      cause += "• MDF drop이 커서 근육 발화 효율이 떨어지고 있습니다.<br>";
+    } else if (risk.mdfDrop === "med") {
+      cause += "• 근육 활성 패턴에 피로 누적이 반영되고 있습니다.<br>";
+    }
+
+    if (overall === "high") {
+      action =
+        "<b style='color:#d32f2f'>⚠ 매우 위험!</b><br>" +
+        "즉시 동작을 멈추고 10~20초간 무릎을 이완하세요.<br>" +
+        "자세를 안정화한 뒤, 속도를 낮춰 다시 시작하세요.";
+    } else if (overall === "med") {
+      action =
+        "<b style='color:#f9a825'>⚠ 주의 필요</b><br>" +
+        "동작 속도를 줄이고, 체중을 한쪽 다리에만 실지 않도록 분산하세요.<br>" +
+        "무릎이 안쪽/바깥쪽으로 과도하게 쏠리지 않게 주의하세요.";
+    } else if (overall === "low") {
+      action =
+        "<b style='color:#2e7d32'>✓ 안전 상태</b><br>" +
+        "현재 자세는 안전 범위입니다.<br>" +
+        "호흡을 고르면서 부드럽게, 통증 없이 움직이는지 계속 체크하세요.";
+    } else {
+      action = "데이터 분석 중… 조금만 기다려주세요.";
+    }
+
+    guideBox.innerHTML = `
+      <b>원인 분석</b><br>
+      ${cause || "• 분석 중…"}<br><br>
+      <b>추천 행동</b><br>
+      ${action}
+    `;
+  }
+
+  // ===== AI 자세 교정 코멘트 업데이트 =====
+  function updatePostureCoach(msg) {
+    const risk = msg.risk || {};
+    const overall = risk.overall || "unknown";
+    const angleRate = Number(msg.angleRate_peak_deg_s);
+    const rmsDrop   = Number(msg.emg_rms_drop_pct);
+    const mdfDrop   = Number(msg.mdf_drop_pct);
+
+    let tag = "기본";
+    let title = "자세 분석 대기 중";
+    let body  = "";
+
+    // 간단한 룰 기반 AI 코칭
+    if (overall === "high") {
+      tag   = "고위험 자세";
+      title = "동작을 즉시 줄이세요";
+
+      if (risk.angleRate === "high") {
+        body += "무릎이 너무 빠른 속도로 굽혀지거나 펴지고 있습니다. 동작을 멈추고, 허벅지(대퇴부)를 고정한 상태에서 천천히 다시 시도하세요.<br><br>";
+      }
+      if (risk.rmsDrop === "high" || risk.mdfDrop === "high") {
+        body += "근 피로도가 이미 많이 누적된 상태입니다. 20~30초간 휴식하며 햄스트링과 대퇴사두근을 가볍게 스트레칭하세요.<br><br>";
+      }
+      if (!body) {
+        body = "현재 무릎 주변에 과부하가 걸린 상태일 수 있습니다. 동작을 멈추고, 통증 유무를 확인한 뒤 무리하지 않는 범위 내에서만 재개하세요.";
+      }
+    } else if (overall === "med") {
+      tag   = "주의 자세";
+      title = "속도·균형을 다시 조정하세요";
+
+      if (risk.angleRate === "med") {
+        body += "동작 속도가 다소 빠르게 감지됩니다. 무릎이 갑자기 꺾이거나, 중심이 앞으로 쏠리지 않도록 동작을 20~30% 정도 느리게 수행해보세요.<br><br>";
+      }
+      if (risk.rmsDrop === "med" || risk.mdfDrop === "med") {
+        body += "근육 피로가 누적되고 있습니다. 세트 사이 휴식 시간을 조금 더 늘리고, 힘을 줄여도 움직임이 가능한 범위로 강도를 조절하세요.<br><br>";
+      }
+      if (!body) {
+        body = "큰 위험은 아니지만, 동작의 속도·균형을 한 번 더 점검해보세요. 골반이 기울어지거나 한쪽 다리에 체중이 쏠리지 않는지 확인하는 것이 좋습니다.";
+      }
+    } else if (overall === "low") {
+      tag   = "안전 자세";
+      title = "좋은 자세를 유지하고 있어요";
+
+      body =
+        "현재 센서 기준으로는 비교적 안정적인 동작입니다.<br>" +
+        "다만, 다음을 계속 체크해보세요:<br>" +
+        "• 통증 없이 부드럽게 움직이고 있는지<br>" +
+        "• 무릎이 발끝보다 과도하게 앞으로 나가지 않는지<br>" +
+        "• 허리가 과도하게 굽거나 젖혀지지 않는지";
+    } else {
+      tag   = "분석 중";
+      title = "데이터 수집 중";
+      body  = "조금 더 많은 센서 데이터가 쌓이면, 동작 패턴을 분석해서 더 구체적인 자세 교정 코멘트를 제공할 수 있습니다.";
+    }
+
+    // EMG 피로 관련 추가 한 줄 (있으면)
+    if (!isNaN(rmsDrop) && rmsDrop > 30) {
+      body += "<br>추가 Tip: 근 피로도가 높으므로, 오늘은 강도를 조금 낮추고 회복 위주의 세션으로 전환하는 것도 좋습니다.";
+    }
+
+    coachBox.style.borderLeftColor =
+      overall === "high" ? "#e53935" :
+      overall === "med"  ? "#f9a825" :
+      overall === "low"  ? "#43a047" : "#9e9e9e";
+
+    coachBox.querySelector(".coach-tag").textContent = tag;
+    coachBox.querySelector(".coach-title").textContent = title;
+    coachBody.innerHTML = body;
+  }
+
+  // ===== MQTT 연결 =====
+  const client = mqtt.connect(brokerUrl, { clientId });
+
+  client.on("connect", () => {
+    connStatusEl.textContent = "MQTT 연결됨 · 실시간 수신 중";
+    connStatusEl.style.background = "rgba(255,255,255,0.2)";
+    client.subscribe(RAW_TOPIC);
+    client.subscribe(RISK_TOPIC);
+  });
+
+  client.on("reconnect", () => {
+    connStatusEl.textContent = "MQTT 재접속 시도 중…";
+  });
+
+  client.on("error", (err) => {
+    console.error("MQTT error:", err);
+    connStatusEl.textContent = "MQTT 오류 발생";
+  });
+
+  // ===== MQTT 메시지 처리 =====
+  client.on("message", (topic, payload) => {
+    let msg;
+    try {
+      msg = JSON.parse(payload.toString());
+    } catch {
+      return;
+    }
+
+    // RAW 센서 → 그래프, local risk
+    if (topic === RAW_TOPIC) {
+      const ts = msg.ts;
+      const i2 = msg.imu2 || {};
+      const e  = msg.emg  || {};
+      const gx = parseFloat(i2.gx);
+      const gy = parseFloat(i2.gy);
+      const gz = parseFloat(i2.gz);
+      const emgEnv = parseFloat(e.env);
+
+      if (!isNaN(gx) && !isNaN(gy) && !isNaN(gz)) {
+        const gmag = Math.sqrt(gx*gx + gy*gy + gz*gz);
+        pushPoint(imuChart, ts, gmag);
+      }
+      if (!isNaN(emgEnv)) {
+        pushPoint(emgChart, ts, emgEnv);
+      }
+
+      if (msg.risk_local && msg.risk_local.imu2_gyr) {
+        localRiskVal.textContent = msg.risk_local.imu2_gyr;
+      }
+
+      lastTsEl.textContent = fmtTs(ts);
+    }
+
+    // 정밀 위험도 → 카드, 가이드, AI 코치
+    if (topic === RISK_TOPIC) {
+      const risk = msg.risk || {};
+      const overall = risk.overall || "unknown";
+
+      setRiskBox(overall);
+
+      angleRateVal.textContent = fmtVal(msg.angleRate_peak_deg_s);
+      rmsDropVal.textContent   = fmtVal(msg.emg_rms_drop_pct);
+      mdfDropVal.textContent   = fmtVal(msg.mdf_drop_pct);
+
+      setLevelPill(angleRateLvlEl, risk.angleRate || "unknown");
+      setLevelPill(rmsDropLvlEl,   risk.rmsDrop   || "unknown");
+      setLevelPill(mdfDropLvlEl,   risk.mdfDrop   || "unknown");
+
+      if (msg.ts) {
+        lastTsEl.textContent = fmtTs(msg.ts);
+      }
+
+      riskDetailEl.textContent =
+        "각속도·EMG RMS·MDF를 종합하여 계산된 위험도입니다. 동작 패턴을 반복 측정하면서 값을 비교해보세요.";
+
+      updateGuide(overall, risk);
+      updatePostureCoach(msg);
+    }
+  });
 </script>
-
 </body>
 </html>
