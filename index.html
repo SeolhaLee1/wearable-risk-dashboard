@@ -178,6 +178,12 @@
       padding: 6px 18px;
     }
 
+    .emg-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      margin-left: 6px;
+    }
+
     /* ============= Metric rows ============= */
     .metric-row {
       margin-top: 16px;
@@ -346,7 +352,7 @@
       margin-top: 4px;
     }
 
-    /* EMG summary row (실시간 대신 안내문) */
+    /* EMG summary row */
     .emg-summary-row {
       margin-top: 22px;
       padding: 10px 12px;
@@ -465,13 +471,18 @@
             </div>
           </div>
 
-          <!-- EMG summary (실시간 수치는 숨기고 안내만) -->
+          <!-- EMG session report (RMS / MDF) -->
           <div class="metric-row emg-summary-row">
-            <div class="emg-summary-title">근 피로도 (EMG) 분석</div>
+            <div class="emg-summary-title">세션 EMG 피로 리포트</div>
             <div class="emg-summary-text">
-              실시간 대시보드에서는 각속도 중심의 위험도만 표시합니다.<br/>
-              EMG 기반 RMS·MDF 피로 분석 결과는 <strong>운동 세션 종료 후 리포트/CSV</strong>에서 확인할 수 있도록 설계했어요.
-              <br/>세션이 끝나면 Colab에서 자동 저장된 데이터를 바탕으로 피로도 변화를 분석해 주세요.
+              RMS 변화율: <span id="emgRmsReport">-</span>%
+              <span id="emgRmsLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span><br/>
+              MDF 감소율: <span id="emgMdfReport">-</span>%
+              <span id="emgMdfLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span>
+            </div>
+            <div class="hint-muted">
+              값은 스트리밍 동안 계속 업데이트되며,
+              <strong>운동 종료 시점의 수치</strong>를 세션 피로도 리포트로 보면 됩니다.
             </div>
           </div>
 
@@ -513,7 +524,7 @@
 
           <div id="coachTips" class="coach-tips">
             기준값 각속도: &lt;100 low · 100–200 med · ≥200 high<br/>
-            EMG 피로도는 운동 종료 후 리포트에서 확인하세요.
+            EMG 피로도는 RMS 변화율·MDF 감소율로 요약되어 왼쪽 리포트에 표시됩니다.
           </div>
         </div>
       </div>
@@ -564,18 +575,12 @@
       return "";
     }
 
-    function setPill(el, level) {
-      el.classList.remove("pill-low", "pill-med", "pill-high");
-      el.classList.add(levelToClass(level));
-      el.textContent = (level || "-").toUpperCase();
-    }
-
     function clampPercent(v) {
       if (!isFinite(v)) return 0;
       return Math.max(0, Math.min(100, v));
     }
 
-    // AI coaching message logic (EMG는 등급만 참고, 수치는 표시 안 함)
+    // AI coaching message logic
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
       let status = "안전 자세";
       let title  = "좋은 자세를 유지하고 있어요";
@@ -632,9 +637,10 @@
       const ss = String(date.getSeconds()).padStart(2, "0");
       document.getElementById("lastUpdated").textContent = `${hh}:${mm}:${ss}`;
 
-      // values
       const angleRate = payload.angleRate_peak_deg_s;
-      const risk = payload.risk || {};
+      const rmsDrop   = payload.emg_rms_drop_pct;
+      const mdfDrop   = payload.mdf_drop_pct;
+      const risk      = payload.risk || {};
       const riskLocal = (payload.risk_local || {}).imu2_gyr;
 
       const angleLevel = risk.angleRate || "unknown";
@@ -659,11 +665,35 @@
       if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
       anglePill.textContent = angleLevel;
 
-      // marker: max 250 deg/s
       const angleMax = 250;
       let anglePercent = 0;
       if (isFinite(angleRate)) anglePercent = clampPercent((angleRate / angleMax) * 100);
       document.getElementById("angleRateMarker").style.left = anglePercent + "%";
+
+      // ---- EMG report (RMS / MDF)
+      const rmsSpan  = document.getElementById("emgRmsReport");
+      const mdfSpan  = document.getElementById("emgMdfReport");
+      const rmsPill  = document.getElementById("emgRmsLevel");
+      const mdfPill  = document.getElementById("emgMdfLevel");
+
+      rmsSpan.textContent = (rmsDrop == null || !isFinite(rmsDrop)) ? "-" : fmtNumber(rmsDrop, 1);
+      mdfSpan.textContent = (mdfDrop == null || !isFinite(mdfDrop)) ? "-" : fmtNumber(mdfDrop, 1);
+
+      // RMS level pill
+      rmsPill.style.display = (rmsLevel === "unknown" || rmsDrop == null || !isFinite(rmsDrop))
+        ? "none" : "inline-flex";
+      if (rmsPill.style.display !== "none") {
+        rmsPill.className = "pill emg-pill " + levelToClass(rmsLevel);
+        rmsPill.textContent = rmsLevel.toUpperCase();
+      }
+
+      // MDF level pill
+      mdfPill.style.display = (mdfLevel === "unknown" || mdfDrop == null || !isFinite(mdfDrop))
+        ? "none" : "inline-flex";
+      if (mdfPill.style.display !== "none") {
+        mdfPill.className = "pill emg-pill " + levelToClass(mdfLevel);
+        mdfPill.textContent = mdfLevel.toUpperCase();
+      }
 
       // ---- Local risk
       const textEl = document.getElementById("localRiskText");
@@ -678,15 +708,13 @@
         pillEl.style.display = "none";
       }
 
-      // ---- Guide & Coaching (EMG는 등급만 사용)
+      // ---- Guide & Coaching
       const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
-
-      document.getElementById("guideText").textContent = coach.guide;
+      document.getElementById("guideText").textContent   = coach.guide;
       document.getElementById("coachStatusText").textContent = coach.status;
-      document.getElementById("coachTitle").textContent = coach.title;
-      document.getElementById("coachBody").textContent = coach.body;
+      document.getElementById("coachTitle").textContent  = coach.title;
+      document.getElementById("coachBody").textContent   = coach.body;
 
-      // status pill 색은 overall 기준
       const coachPill = document.getElementById("coachStatusPill");
       coachPill.style.background = (overall === "high")
         ? "#FFE1E1"
