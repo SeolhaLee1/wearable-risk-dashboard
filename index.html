@@ -345,6 +345,28 @@
       color: #9AA7A4;
       margin-top: 4px;
     }
+
+    /* EMG summary row (실시간 대신 안내문) */
+    .emg-summary-row {
+      margin-top: 22px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #F7FBFA;
+      border: 1px dashed #C7D9D4;
+    }
+
+    .emg-summary-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #26413C;
+      margin-bottom: 4px;
+    }
+
+    .emg-summary-text {
+      font-size: 12px;
+      color: #6B7A78;
+      line-height: 1.5;
+    }
   </style>
 </head>
 
@@ -416,7 +438,8 @@
             <div id="overallPill" class="pill pill-large pill-low">LOW</div>
           </div>
           <div id="overallDesc" class="card-sub">
-            센서 연결 전이거나 안정 상태입니다. 움직임을 시작하면 위험도가 갱신됩니다.
+            현재는 비교적 안정적인 상태입니다. 움직임 패턴과 피로도를 장시간 모니터링하여,
+            위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.
           </div>
 
           <!-- Knee angle rate -->
@@ -442,49 +465,13 @@
             </div>
           </div>
 
-          <!-- EMG RMS drop -->
-          <div class="metric-row">
-            <div class="metric-top">
-              <div>
-                <span class="metric-label">EMG RMS 감소율</span>
-                <span class="metric-unit">(%)</span>
-              </div>
-              <div class="metric-value">
-                <span id="rmsDropVal">-</span>
-                <span> · </span>
-                <span id="rmsDropLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
-              </div>
-            </div>
-            <div class="scale-bar">
-              <div id="rmsDropMarker" class="scale-marker"></div>
-            </div>
-            <div class="scale-caption">
-              <span class="safe"><span class="dot">●</span>근활동 유지 (&lt; 20)</span>
-              <span class="warn"><span class="dot">●</span>피로 누적 (20–50)</span>
-              <span class="danger"><span class="dot">●</span>피로 과다 (&gt;= 50)</span>
-            </div>
-          </div>
-
-          <!-- EMG MDF drop -->
-          <div class="metric-row">
-            <div class="metric-top">
-              <div>
-                <span class="metric-label">EMG MDF 감소율</span>
-                <span class="metric-unit">(%)</span>
-              </div>
-              <div class="metric-value">
-                <span id="mdfDropVal">-</span>
-                <span> · </span>
-                <span id="mdfDropLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
-              </div>
-            </div>
-            <div class="scale-bar">
-              <div id="mdfDropMarker" class="scale-marker"></div>
-            </div>
-            <div class="scale-caption">
-              <span class="safe"><span class="dot">●</span>주파수 정상 (&lt; 10)</span>
-              <span class="warn"><span class="dot">●</span>피로 진행 (10–20)</span>
-              <span class="danger"><span class="dot">●</span>피로 심함 (&gt;= 20)</span>
+          <!-- EMG summary (실시간 수치는 숨기고 안내만) -->
+          <div class="metric-row emg-summary-row">
+            <div class="emg-summary-title">근 피로도 (EMG) 분석</div>
+            <div class="emg-summary-text">
+              실시간 대시보드에서는 각속도 중심의 위험도만 표시합니다.<br/>
+              EMG 기반 RMS·MDF 피로 분석 결과는 <strong>운동 세션 종료 후 리포트/CSV</strong>에서 확인할 수 있도록 설계했어요.
+              <br/>세션이 끝나면 Colab에서 자동 저장된 데이터를 바탕으로 피로도 변화를 분석해 주세요.
             </div>
           </div>
 
@@ -526,7 +513,7 @@
 
           <div id="coachTips" class="coach-tips">
             기준값 각속도: &lt;100 low · 100–200 med · ≥200 high<br/>
-            기준값 RMS 감소율: &lt;20% low · 20–50% med · ≥50% high
+            EMG 피로도는 운동 종료 후 리포트에서 확인하세요.
           </div>
         </div>
       </div>
@@ -588,27 +575,23 @@
       return Math.max(0, Math.min(100, v));
     }
 
-    // AI coaching message logic
+    // AI coaching message logic (EMG는 등급만 참고, 수치는 표시 안 함)
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
-      // 기본 텍스트
       let status = "안전 자세";
       let title  = "좋은 자세를 유지하고 있어요";
-      let body   = "현재 측정된 각속도와 근활동이 모두 안정 범위에 있습니다. 지금과 같은 패턴을 유지하면 무릎 부상 위험이 낮아요.";
+      let body   = "현재 측정된 각속도가 안정 범위에 있습니다. 지금과 같은 패턴을 유지하면 무릎 부상 위험이 낮아요.";
       let guide  = "지금은 강도 조절보다 움직임 패턴을 기록하는 단계로 사용해 보세요.";
 
       if (overall === "med") {
         status = "주의 자세";
-        // 각속도 쪽이 문제
         if (angLevel === "med" || angLevel === "high") {
           title = "무릎 굽힘 속도가 조금 빠른 편이에요";
           body  = "착지 순간이나 방향 전환할 때 무릎이 급하게 꺾이고 있을 가능성이 있어요. 한 번에 깊게 굽히기보다, 두 번에 나눠 부드럽게 굽히는 느낌으로 움직여 보세요.";
           guide = "운동 중 3~5회 정도는 속도를 일부러 줄여서 ‘천천히, 조용하게 착지하기’를 연습하면 실제 경기 상황에서도 부드러운 패턴을 유지하는 데 도움이 됩니다.";
-        }
-        // RMS / MDF 쪽이 문제
-        else if (rmsLevel === "med" || mdfLevel === "med") {
+        } else if (rmsLevel === "med" || mdfLevel === "med") {
           title = "근 피로가 서서히 쌓이고 있어요";
-          body  = "RMS 또는 MDF 감소율이 중간 수준으로 올라가고 있어요. 근육이 버티긴 하지만 피로가 쌓이는 구간입니다. 세트 사이 휴식 시간을 1~2분 정도 충분히 확보해 주세요.";
-          guide = "연속 동작 횟수를 1~2세트 줄이고, 가벼운 스트레칭이나 폼롤러를 함께 사용하면 피로 누적을 늦출 수 있어요.";
+          body  = "EMG 지표에서 피로 수준이 중간 정도로 올라가고 있습니다. 세트 사이 휴식 시간을 1~2분 정도 충분히 확보해 주세요.";
+          guide = "연속 동작 횟수를 조금 줄이고, 가벼운 스트레칭이나 폼롤러를 함께 사용하면 피로 누적을 늦출 수 있어요.";
         }
       }
 
@@ -620,7 +603,7 @@
           guide = "• 점프 착지 시, 무릎이 ‘정면’을 보도록 유지하세요.\n• 상체를 조금 더 숙이고, 고관절(엉덩이 관절)로 충격을 나누어 받는 느낌을 연습해 보세요.\n• 통증이 느껴진다면 즉시 운동을 종료하고 아이싱 또는 휴식을 취하세요.";
         } else if (rmsLevel === "high" || mdfLevel === "high") {
           title = "근 피로가 많이 누적된 상태예요";
-          body  = "EMG 지표에서 피로 수준이 높게 나타납니다. 근육이 제 역할을 못 하면서 관절에 부담이 증가하는 구간입니다. 이 상태에서는 동작 정확도가 떨어져 부상 위험이 커질 수 있어요.";
+          body  = "EMG 기반 피로 수준이 높게 나타납니다. 근육이 제 역할을 못 하면서 관절에 부담이 증가하는 구간입니다. 이 상태에서는 동작 정확도가 떨어져 부상 위험이 커질 수 있어요.";
           guide = "지금은 강도를 낮추거나 세션을 종료하는 것이 좋습니다. 수분 보충과 5~10분 정도의 가벼운 보행, 스트레칭으로 회복 시간을 가져 주세요.";
         }
       }
@@ -635,7 +618,7 @@
       if (overall === "med") {
         return "일부 지표에서 위험 신호가 감지되었습니다. 동작 속도·착지 패턴·근 피로 중 어느 부분이 문제인지 오른쪽 가이드를 참고하여 조정해 보세요.";
       }
-      return "현재는 비교적 안정적인 상태입니다. 움직임 패턴과 피로도를 장시간 모니터링하여, 위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.";
+      return "현재는 비교적 안정적인 상태입니다. 움직임 패턴을 장시간 모니터링하며, 위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.";
     }
 
     // ===== Main update =====
@@ -651,10 +634,12 @@
 
       // values
       const angleRate = payload.angleRate_peak_deg_s;
-      const rmsDrop = payload.emg_rms_drop_pct;
-      const mdfDrop = payload.mdf_drop_pct;
       const risk = payload.risk || {};
       const riskLocal = (payload.risk_local || {}).imu2_gyr;
+
+      const angleLevel = risk.angleRate || "unknown";
+      const rmsLevel   = risk.rmsDrop   || "unknown";
+      const mdfLevel   = risk.mdfDrop   || "unknown";
 
       // overall pill
       const overall = risk.overall || "low";
@@ -669,7 +654,6 @@
       // ---- angle rate
       document.getElementById("angleRateVal").textContent =
         fmtNumber(angleRate, 1);
-      const angleLevel = risk.angleRate || "unknown";
       const anglePill = document.getElementById("angleRateLevel");
       anglePill.classList.remove("pill-low", "pill-med", "pill-high");
       if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
@@ -680,34 +664,6 @@
       let anglePercent = 0;
       if (isFinite(angleRate)) anglePercent = clampPercent((angleRate / angleMax) * 100);
       document.getElementById("angleRateMarker").style.left = anglePercent + "%";
-
-      // ---- RMS drop
-      document.getElementById("rmsDropVal").textContent =
-        rmsDrop == null ? "-" : fmtNumber(rmsDrop, 1);
-      const rmsLevel = risk.rmsDrop || "unknown";
-      const rmsPill = document.getElementById("rmsDropLevel");
-      rmsPill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (rmsLevel !== "unknown") rmsPill.classList.add(levelToClass(rmsLevel));
-      rmsPill.textContent = rmsLevel;
-
-      const rmsMax = 80;
-      let rmsPercent = 0;
-      if (isFinite(rmsDrop)) rmsPercent = clampPercent((rmsDrop / rmsMax) * 100);
-      document.getElementById("rmsDropMarker").style.left = rmsPercent + "%";
-
-      // ---- MDF drop
-      document.getElementById("mdfDropVal").textContent =
-        mdfDrop == null ? "-" : fmtNumber(mdfDrop, 1);
-      const mdfLevel = risk.mdfDrop || "unknown";
-      const mdfPill = document.getElementById("mdfDropLevel");
-      mdfPill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (mdfLevel !== "unknown") mdfPill.classList.add(levelToClass(mdfLevel));
-      mdfPill.textContent = mdfLevel;
-
-      const mdfMax = 40;
-      let mdfPercent = 0;
-      if (isFinite(mdfDrop)) mdfPercent = clampPercent((mdfDrop / mdfMax) * 100);
-      document.getElementById("mdfDropMarker").style.left = mdfPercent + "%";
 
       // ---- Local risk
       const textEl = document.getElementById("localRiskText");
@@ -722,11 +678,10 @@
         pillEl.style.display = "none";
       }
 
-      // ---- Guide & Coaching
+      // ---- Guide & Coaching (EMG는 등급만 사용)
       const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
 
       document.getElementById("guideText").textContent = coach.guide;
-
       document.getElementById("coachStatusText").textContent = coach.status;
       document.getElementById("coachTitle").textContent = coach.title;
       document.getElementById("coachBody").textContent = coach.body;
