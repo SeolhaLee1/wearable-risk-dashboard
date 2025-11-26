@@ -259,24 +259,6 @@
     .scale-caption .warn .dot   { color: #FFC107; }
     .scale-caption .danger .dot { color: #E53935; }
 
-    /* ============= Local risk line ============= */
-    .local-risk-text {
-      font-size: 13px;
-      color: #5F6A67;
-      line-height: 1.5;
-    }
-
-    .local-risk-pill {
-      display: inline-flex;
-      align-items: center;
-      margin-left: 8px;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #E7F4EF;
-      color: #0F4C3A;
-    }
-
     /* ============= Guide / Coaching ============= */
     .guide-title {
       font-size: 17px;
@@ -380,6 +362,22 @@
     .coach-tips {
       white-space: pre-line;
     }
+
+    /* EMG 리포트 고정 버튼 */
+    .lock-btn {
+      margin-top: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid #C7D9D4;
+      background: #F7FBFA;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .lock-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
   </style>
 </head>
 
@@ -451,7 +449,7 @@
             <div id="overallPill" class="pill pill-large pill-low">LOW</div>
           </div>
           <div id="overallDesc" class="card-sub">
-            현재는 비교적 안정적인 상태입니다. 움직임 패턴과 피로도를 장시간 모니터링하여,
+            현재는 비교적 안정적인 상태입니다. 움직임 패턴을 장시간 모니터링하며,
             위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.
           </div>
 
@@ -482,7 +480,7 @@
           <div class="metric-row emg-summary-row">
             <div class="emg-summary-title">세션 EMG 피로 리포트</div>
             <div class="emg-summary-text">
-              RMS 증가율: <span id="emgRmsReport">-</span>%
+              RMS 변화율: <span id="emgRmsReport">-</span>%
               <span id="emgRmsLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span><br/>
               MDF 감소율: <span id="emgMdfReport">-</span>%
               <span id="emgMdfLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span>
@@ -491,18 +489,11 @@
               값은 스트리밍 동안 계속 업데이트되며,
               <strong>운동 종료 시점의 수치</strong>를 세션 피로도 리포트로 보면 됩니다.
             </div>
-          </div>
-
-          <!-- Local risk -->
-          <div class="metric-row" style="margin-top: 20px;">
-            <div class="metric-label">Local Risk (IMU2 자이로)</div>
-            <div class="hint-muted">
-              ESP32가 IMU2 자이로 크기만으로 평가한 간단 위험도입니다.
-            </div>
-            <div class="local-risk-text" style="margin-top: 6px;">
-              현재 보드 로컬 평가:
-              <span id="localRiskText">-</span>
-              <span id="localRiskPill" class="local-risk-pill" style="display:none;">-</span>
+            <button id="lockEmgReportBtn" type="button" class="lock-btn">
+              운동 종료 · 세션 리포트 고정하기
+            </button>
+            <div id="lockStatusText" class="hint-muted" style="margin-top:6px;">
+              아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
             </div>
           </div>
         </div>
@@ -547,6 +538,9 @@
     const clientId = "andachi-web-" + Math.random().toString(16).substring(2, 10);
     const client = mqtt.connect(BROKER_URL, { clientId });
 
+    let emgReportLocked = false;
+    let emgReportSnapshot = null;
+
     client.on("connect", () => {
       console.log("MQTT connected as", clientId);
       client.subscribe(RISK_TOPIC, (err) => {
@@ -569,6 +563,27 @@
       }
     });
 
+    // ===== 버튼 초기화 =====
+    (function initLockButton() {
+      const lockBtn = document.getElementById("lockEmgReportBtn");
+      const lockStatus = document.getElementById("lockStatusText");
+      if (!lockBtn) return;
+
+      lockBtn.addEventListener("click", () => {
+        if (!emgReportSnapshot) {
+          if (lockStatus) {
+            lockStatus.textContent = "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
+          }
+          return;
+        }
+        emgReportLocked = true;
+        lockBtn.disabled = true;
+        if (lockStatus) {
+          lockStatus.textContent = "세션 리포트가 고정되었습니다. 새 데이터가 와도 RMS/MDF 값은 바뀌지 않습니다.";
+        }
+      });
+    })();
+
     // ===== Helper functions =====
     function fmtNumber(v, digits = 1) {
       if (v === null || v === undefined || !isFinite(v)) return "-";
@@ -587,7 +602,37 @@
       return Math.max(0, Math.min(100, v));
     }
 
-    // AI coaching message logic (러닝/부상 예방 논문 근거 반영 버전)
+    // EMG 리포트를 실제로 렌더링하는 함수
+    function renderEmgReport(rmsDrop, mdfDrop, rmsLevel, mdfLevel) {
+      const rmsSpan  = document.getElementById("emgRmsReport");
+      const mdfSpan  = document.getElementById("emgMdfReport");
+      const rmsPill  = document.getElementById("emgRmsLevel");
+      const mdfPill  = document.getElementById("emgMdfLevel");
+
+      // 값 텍스트
+      rmsSpan.textContent = (rmsDrop == null || !isFinite(rmsDrop)) ? "-" : fmtNumber(rmsDrop, 1);
+      mdfSpan.textContent = (mdfDrop == null || !isFinite(mdfDrop)) ? "-" : fmtNumber(mdfDrop, 1);
+
+      // RMS level pill
+      if (rmsLevel === "unknown" || rmsDrop == null || !isFinite(rmsDrop)) {
+        rmsPill.style.display = "none";
+      } else {
+        rmsPill.style.display = "inline-flex";
+        rmsPill.className = "pill emg-pill " + levelToClass(rmsLevel);
+        rmsPill.textContent = rmsLevel.toUpperCase();
+      }
+
+      // MDF level pill
+      if (mdfLevel === "unknown" || mdfDrop == null || !isFinite(mdfDrop)) {
+        mdfPill.style.display = "none";
+      } else {
+        mdfPill.style.display = "inline-flex";
+        mdfPill.className = "pill emg-pill " + levelToClass(mdfLevel);
+        mdfPill.textContent = mdfLevel.toUpperCase();
+      }
+    }
+
+    // AI coaching message logic (근거 논문 텍스트 제거 버전)
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
       let status = "";
       let title  = "";
@@ -608,11 +653,7 @@
           "✅ 권장 행동\n" +
           "• 달리기 전 동적 워밍업 5–10분 (예: 레그 스윙, 하이 니)\n" +
           "• 달리기 후 햄스트링·종아리·고관절 스트레칭 20–30초 유지\n" +
-          "• 주간 훈련 거리·강도는 한 번에 +10% 이상 급격히 올리지 않기\n\n" +
-          "📚 근거 논문\n" +
-          "• Willwacher et al., 2022 — 러닝 부상과 연관된 생체역학적 위험요인 정리\n" +
-          "• Anderson et al., 2022 — 케이던스(보폭은 줄이고, 발걸음 수는 늘리기) 증가가\n" +
-          "  충격·관절 부하 감소와 연관됨";
+          "• 주간 훈련 거리·강도는 한 번에 +10% 이상 급격히 올리지 않기";
 
         return { status, title, body, guide };
       }
@@ -621,7 +662,6 @@
       if (overall === "med") {
         status = "🟡 MEDIUM 위험도";
 
-        // 각속도 쪽이 med/high → 충격/속도 이슈 강조
         if (angLevel === "med" || angLevel === "high") {
           title = "피로나 충격량이 증가된 상태입니다.";
 
@@ -629,9 +669,7 @@
             "무릎에 전달되는 순간 충격이나 굽힘 속도가 평소보다 커진 신호입니다.\n" +
             "오늘은 거리를 줄이거나 페이스를 낮추고, 보폭을 조금 줄이는 대신\n" +
             "케이던스를 약간 높여서 ‘가볍게, 자주 딛는’ 패턴을 만들어 보세요.";
-
         } else if (rmsLevel === "med" || mdfLevel === "med") {
-          // EMG 피로가 med 이상 → 피로 누적 강조
           title = "근 피로가 서서히 쌓이고 있어요.";
 
           body =
@@ -639,7 +677,6 @@
             "근육이 지지력을 일부 잃기 시작한 단계이므로, 무리한 페이스 유지보다는\n" +
             "훈련 강도를 살짝 낮추고 회복에 여유를 주는 편이 좋습니다.";
         } else {
-          // 기타 케이스
           title = "부하와 피로가 다소 올라간 상태입니다.";
 
           body =
@@ -652,11 +689,7 @@
           "✅ 권장 행동\n" +
           "• 오늘은 평소의 약 70–80% 수준 거리/강도로 달리기\n" +
           "• 힙·종아리 근력운동 1–2세트 추가 (예: 힙 쓰러스트, 카프 레이즈)\n" +
-          "• 달리기 시 보폭을 조금 줄이고 케이던스를 평소보다 +5~10% 높여보기\n\n" +
-          "📚 근거 논문\n" +
-          "• Anderson et al., 2022 — 케이던스를 올리면 무릎 굴곡각·고관절 내전각 등이 감소하는 경향\n" +
-          "• Shen et al., 2024 — 실시간 바이오피드백으로 러닝 시 충격 하중을 줄이는 전략이\n" +
-          "  부상 예방에 효과적임을 제시";
+          "• 달리기 시 보폭을 조금 줄이고 케이던스를 평소보다 +5~10% 높여보기";
 
         return { status, title, body, guide };
       }
@@ -666,16 +699,13 @@
         status = "🔴 HIGH 위험도";
 
         if (angLevel === "high") {
-          // 각속도 high → 순간 부하가 큰 경우
           title = "부상 위험이 높습니다! 오늘은 강도를 즉시 낮춰야 해요.";
 
           body =
             "각속도 피크가 높게 측정되어, 착지/방향 전환 시 무릎에 큰 부하가 걸리고 있습니다.\n" +
             "오늘은 달리기를 중단하고, 자전거·수영 등 저충격 크로스 트레이닝으로 바꾸는 것을 권장합니다.\n" +
             "착지 패턴(미드풋/포어풋), 보폭, 케이던스를 다시 점검하는 ‘리셋 데이’로 사용해 주세요.";
-
         } else if (rmsLevel === "high" || mdfLevel === "high") {
-          // 피로 high → 근지구력 고갈 구간
           title = "근 피로가 많이 누적된 상태예요.";
 
           body =
@@ -695,10 +725,7 @@
           "• 오늘은 달리기 대신 관절 부담이 적은 운동(실내 자전거, 수영, 가벼운 보행 등) 선택\n" +
           "• 착지는 미드풋/포어풋 위주로 전환하는 연습 (뒤꿈치 강한 충격 피하기)\n" +
           "• 보폭 줄이고 케이던스를 평소보다 +10% 이상 높이는 러닝 드릴은 회복 후 단계적으로 적용\n" +
-          "• 힙·햄스트링·종아리 집중 근력운동 + 충분한 스트레칭으로 회복에 집중\n\n" +
-          "📚 근거 논문\n" +
-          "• Willwacher et al., 2022 — 관절역학적 부하가 러닝 관련 과사용성 부상과 밀접히 연관됨\n" +
-          "• Xiang et al., 2024 — 지면 반발력·경골 내골 하중이 러닝 부상 위험과 관련됨을 분석";
+          "• 힙·햄스트링·종아리 집중 근력운동 + 충분한 스트레칭으로 회복에 집중";
 
         return { status, title, body, guide };
       }
@@ -727,7 +754,6 @@
       const rmsDrop   = payload.emg_rms_drop_pct;
       const mdfDrop   = payload.mdf_drop_pct;
       const risk      = payload.risk || {};
-      const riskLocal = (payload.risk_local || {}).imu2_gyr;
 
       const angleLevel = risk.angleRate || "unknown";
       const rmsLevel   = risk.rmsDrop   || "unknown";
@@ -765,50 +791,25 @@
       if (isFinite(angleRate)) anglePercent = clampPercent((angleRate / angleMax) * 100);
       document.getElementById("angleRateMarker").style.left = anglePercent + "%";
 
-      // ---- EMG report (RMS / MDF)
-      const rmsSpan  = document.getElementById("emgRmsReport");
-      const mdfSpan  = document.getElementById("emgMdfReport");
-      const rmsPill  = document.getElementById("emgRmsLevel");
-      const mdfPill  = document.getElementById("emgMdfLevel");
-
-      rmsSpan.textContent = (rmsDrop == null || !isFinite(rmsDrop)) ? "-" : fmtNumber(rmsDrop, 1);
-      mdfSpan.textContent = (mdfDrop == null || !isFinite(mdfDrop)) ? "-" : fmtNumber(mdfDrop, 1);
-
-      // RMS level pill
-      rmsPill.style.display = (rmsLevel === "unknown" || rmsDrop == null || !isFinite(rmsDrop))
-        ? "none" : "inline-flex";
-      if (rmsPill.style.display !== "none") {
-        rmsPill.className = "pill emg-pill " + levelToClass(rmsLevel);
-        rmsPill.textContent = rmsLevel.toUpperCase();
-      }
-
-      // MDF level pill
-      mdfPill.style.display = (mdfLevel === "unknown" || mdfDrop == null || !isFinite(mdfDrop))
-        ? "none" : "inline-flex";
-      if (mdfPill.style.display !== "none") {
-        mdfPill.className = "pill emg-pill " + levelToClass(mdfLevel);
-        mdfPill.textContent = mdfLevel.toUpperCase();
-      }
-
-      // ---- Local risk
-      const textEl = document.getElementById("localRiskText");
-      const pillEl = document.getElementById("localRiskPill");
-
-      if (riskLocal) {
-        textEl.textContent = riskLocal;
-        pillEl.style.display = "inline-flex";
-        pillEl.textContent = riskLocal.toUpperCase();
+      // ---- EMG report (RMS / MDF) - 세션 리포트 고정 로직
+      if (emgReportLocked && emgReportSnapshot) {
+        renderEmgReport(
+          emgReportSnapshot.rmsDrop,
+          emgReportSnapshot.mdfDrop,
+          emgReportSnapshot.rmsLevel,
+          emgReportSnapshot.mdfLevel
+        );
       } else {
-        textEl.textContent = "-";
-        pillEl.style.display = "none";
+        renderEmgReport(rmsDrop, mdfDrop, rmsLevel, mdfLevel);
+        emgReportSnapshot = { rmsDrop, mdfDrop, rmsLevel, mdfLevel };
       }
 
       // ---- Guide & Coaching
       const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
-      document.getElementById("guideText").textContent      = coach.guide;
+      document.getElementById("guideText").textContent       = coach.guide;
       document.getElementById("coachStatusText").textContent = coach.status;
-      document.getElementById("coachTitle").textContent     = coach.title;
-      document.getElementById("coachBody").textContent      = coach.body;
+      document.getElementById("coachTitle").textContent      = coach.title;
+      document.getElementById("coachBody").textContent       = coach.body;
 
       const coachPill = document.getElementById("coachStatusPill");
       coachPill.style.background = (overall === "high")
