@@ -172,7 +172,7 @@
       color: #B3261E;
     }
 
-    /* 큰 pill (각속도 위험도) */
+    /* 큰 pill (종합 위험도) */
     .pill-large {
       font-size: 16px;
       padding: 6px 18px;
@@ -332,7 +332,7 @@
       font-size: 11px;
       color: #9AA7A4;
       margin-top: 4px;
-      white-space: pre-line; /* 세션 리포트 요약 줄바꿈 표시 */
+      white-space: pre-line;  /* 줄바꿈(\n) 보이게 */
     }
 
     /* EMG summary row */
@@ -446,13 +446,12 @@
       <div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title">무릎 상대 각속도 위험도</div>
-            <!-- 여기 pill은 angleRate 기준 LOW/MED/HIGH만 표시 -->
+            <div class="card-title">종합 위험도</div>
             <div id="overallPill" class="pill pill-large pill-low">LOW</div>
           </div>
           <div id="overallDesc" class="card-sub">
-            무릎 굽힘·펴짐 속도를 기준으로 현재 부하 수준을 보여줍니다.
-            값이 높을수록 착지·방향전환 시 순간 부하가 커질 수 있어요.
+            착지·방향전환 순간에 무릎이 얼마나 빠르게 꺾였다 펴지는지를 보여주는 값입니다.
+            착지 충격이나 방향 전환 부하가 클수록 이 값이 높게 나타날 수 있어요.
           </div>
 
           <!-- Knee angle rate -->
@@ -482,14 +481,14 @@
           <div class="metric-row emg-summary-row">
             <div class="emg-summary-title">세션 EMG 피로 리포트</div>
             <div class="emg-summary-text">
-              RMS 변화율: <span id="emgRmsReport">-</span>%
+              RMS 증가율: <span id="emgRmsReport">-</span>%
               <span id="emgRmsLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span><br/>
               MDF 감소율: <span id="emgMdfReport">-</span>%
               <span id="emgMdfLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span>
             </div>
             <div class="hint-muted">
-실시간 데이터는 계속 변화합니다.
-운동을 마친 뒤 버튼을 눌러 해당 시점의 값을 세션 리포트로 저장하세요.
+              실시간 데이터는 계속 변화합니다.
+              운동을 마친 뒤 버튼을 눌러 해당 시점의 값을 세션 리포트로 저장하세요.
             </div>
             <button id="lockEmgReportBtn" type="button" class="lock-btn">
               운동 종료 · 세션 리포트 고정하기
@@ -524,7 +523,7 @@
 
           <div id="coachTips" class="coach-tips">
             기준값 각속도: &lt;100 low · 100–200 med · ≥200 high<br/>
-            EMG 피로도는 RMS 변화율·MDF 감소율로 요약되어 왼쪽 리포트에 표시됩니다.
+            EMG 피로도는 RMS 증가율·MDF 감소율로 요약되어 왼쪽 리포트에 표시됩니다.
           </div>
         </div>
       </div>
@@ -565,6 +564,46 @@
       }
     });
 
+    // ===== EMG 세션 요약 멘트 생성 함수 =====
+    function getEmgSessionSummary(rmsDrop, mdfDrop) {
+      const r = (v) => (v === null || v === undefined || !isFinite(v) ? null : v);
+      const rVal = r(rmsDrop);
+      const mVal = r(mdfDrop);
+
+      let rmsLine;
+      if (rVal === null) {
+        rmsLine = "RMS 증가율을 계산하기에 데이터가 충분하지 않았습니다.";
+      } else if (rVal < 10) {
+        rmsLine = `RMS는 약 ${rVal.toFixed(1)}% 증가해, 후반에도 강도 변화가 거의 없는 편입니다.`;
+      } else if (rVal < 30) {
+        rmsLine = `RMS는 약 ${rVal.toFixed(1)}% 증가해, 후반부에 근 사용량이 조금 늘어난 정도입니다.`;
+      } else {
+        rmsLine = `RMS는 약 ${rVal.toFixed(1)}% 증가해, 후반부에 힘을 많이 써 근육 부담이 꽤 커졌을 수 있습니다.`;
+      }
+
+      let mdfLine;
+      if (mVal === null) {
+        mdfLine = "MDF 감소율은 안정적으로 추정되지 않았습니다.";
+      } else if (mVal < 10) {
+        mdfLine = `MDF는 약 ${mVal.toFixed(1)}% 감소해, 피로 누적은 크지 않은 편입니다.`;
+      } else if (mVal < 30) {
+        mdfLine = `MDF는 약 ${mVal.toFixed(1)}% 감소해, 근 피로가 서서히 쌓인 것으로 보입니다.`;
+      } else {
+        mdfLine = `MDF는 약 ${mVal.toFixed(1)}% 감소해, 근 피로가 많이 누적된 상태일 수 있습니다.`;
+      }
+
+      let rec;
+      if ((rVal !== null && rVal >= 30) || (mVal !== null && mVal >= 30)) {
+        rec = "다음 세션에서는 강도나 거리를 한 단계 줄이고, 하체 스트레칭·폼롤링과 충분한 휴식으로 회복에 집중해 주세요.";
+      } else if ((rVal !== null && rVal >= 10) || (mVal !== null && mVal >= 10)) {
+        rec = "다음 러닝 전에는 워밍업과 쿨다운을 조금 더 충분히 가져가고, 주간 거리·강도를 급하게 올리지 않도록 조절해 주세요.";
+      } else {
+        rec = "현재 수준에서는 부담이 크지 않은 세션이었어요. 지금처럼 무리하지 않는 강도로 점진적으로 훈련을 이어가면 좋습니다.";
+      }
+
+      return `세션 리포트가 고정되었습니다.\n\n${rmsLine}\n${mdfLine}\n\n${rec}`;
+    }
+
     // ===== 버튼 초기화 =====
     (function initLockButton() {
       const lockBtn = document.getElementById("lockEmgReportBtn");
@@ -574,19 +613,18 @@
       lockBtn.addEventListener("click", () => {
         if (!emgReportSnapshot) {
           if (lockStatus) {
-            lockStatus.textContent = "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
+            lockStatus.textContent =
+              "아직 EMG 데이터가 충분하지 않습니다.\n몇 초 더 움직인 뒤 다시 눌러주세요.";
           }
           return;
         }
         emgReportLocked = true;
         lockBtn.disabled = true;
 
-        const summary = generateEmgSessionSummary(
-          emgReportSnapshot.rmsDrop,
-          emgReportSnapshot.mdfDrop
-        );
         if (lockStatus) {
-          lockStatus.textContent = summary;
+          const { rmsDrop, mdfDrop } = emgReportSnapshot;
+          const summaryText = getEmgSessionSummary(rmsDrop, mdfDrop);
+          lockStatus.textContent = summaryText;
         }
       });
     })();
@@ -639,81 +677,7 @@
       }
     }
 
-    // EMG 세션 리포트 요약 생성
-    function generateEmgSessionSummary(rmsDrop, mdfDrop) {
-      const hasRms = rmsDrop != null && isFinite(rmsDrop);
-      const hasMdf = mdfDrop != null && isFinite(mdfDrop);
-
-      function describeRms(v) {
-        if (!hasRms) return "RMS는 아직 충분한 데이터가 없어 해석이 어렵습니다.";
-        const mag = Math.abs(v);
-        if (v >= 0) {
-          if (mag < 5) {
-            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 전반과 비슷한 수준의 근 사용량을 유지했습니다.`;
-          } else if (mag < 20) {
-            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 후반으로 갈수록 근 사용량이 조금 늘어난 편입니다.`;
-          } else {
-            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 후반부에 힘을 많이 써 무릎 주변 근육에 부담이 커졌을 수 있습니다.`;
-          }
-        } else {
-          if (mag < 5) {
-            return `RMS는 약 ${fmtNumber(mag)}% 감소해, 전반과 비슷한 수준의 근 사용량을 유지했습니다.`;
-          } else {
-            return `RMS는 약 ${fmtNumber(mag)}% 감소해, 후반부에는 상대적으로 힘을 덜 쓰는 패턴이었습니다.`;
-          }
-        }
-      }
-
-      function describeMdf(v) {
-        if (!hasMdf) return "MDF는 아직 충분한 데이터가 없어 해석이 어렵습니다.";
-        const mag = Math.abs(v);
-        if (v >= 0) {
-          if (mag < 5) {
-            return `MDF는 약 ${fmtNumber(mag)}% 감소에 그쳐, 피로 누적은 크지 않은 편입니다.`;
-          } else if (mag < 20) {
-            return `MDF는 약 ${fmtNumber(mag)}% 감소해, 피로가 서서히 쌓인 편입니다.`;
-          } else {
-            return `MDF는 약 ${fmtNumber(mag)}% 크게 감소해, 근 피로가 꽤 많이 누적된 상태일 수 있습니다.`;
-          }
-        } else {
-          if (mag < 5) {
-            return `MDF는 약 ${fmtNumber(mag)}% 증가해, 피로 누적은 크지 않은 편입니다.`;
-          } else {
-            return `MDF는 약 ${fmtNumber(mag)}% 증가해, 근 수축 패턴이 오히려 가벼워진 구간이 있었습니다.`;
-          }
-        }
-      }
-
-      let fatigueScore = 0;
-      if (hasRms && rmsDrop >= 15) fatigueScore++;
-      if (hasRms && rmsDrop >= 30) fatigueScore++;
-      if (hasMdf && mdfDrop >= 10) fatigueScore++;
-      if (hasMdf && mdfDrop >= 25) fatigueScore++;
-
-      let reco;
-      if (!hasRms && !hasMdf) {
-        reco = "데이터가 충분하지 않아 구체적인 피로도 평가는 어렵습니다. 다음 세션에서 조금 더 길게 측정해 보세요.";
-      } else if (fatigueScore <= 0) {
-        reco = "가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
-      } else if (fatigueScore <= 2) {
-        reco = "오늘은 강도를 조금 줄이고, 충분한 수분 섭취와 하체 스트레칭으로 회복해 주세요.";
-      } else {
-        reco = "다음 세션에서는 강도나 거리를 줄이고, 하체 근육 회복(스트레칭·폼롤링·수면)을 우선해 주세요.";
-      }
-
-      const lines = [
-        "세션 리포트가 고정되었습니다.",
-        "",
-        hasRms ? describeRms(rmsDrop) : "RMS는 아직 충분한 데이터가 없어 해석이 어렵습니다.",
-        hasMdf ? describeMdf(mdfDrop) : "MDF는 아직 충분한 데이터가 없어 해석이 어렵습니다.",
-        "",
-        reco
-      ];
-
-      return lines.join("\n");
-    }
-
-    // AI coaching message logic (overall은 내부적으로만 사용)
+    // AI coaching message logic
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
       let status = "";
       let title  = "";
@@ -784,7 +748,7 @@
 
           body =
             "각속도 피크가 높게 측정되어, 착지/방향 전환 시 무릎에 큰 부하가 걸리고 있습니다.\n" +
-            "오늘은 달리기를 중단하고, 자전거·수영 등 저충격 크로스트레이닝으로 바꾸는 것을 권장합니다.\n" +
+            "오늘은 달리기를 중단하고, 자전거·수영 등 저충격 크로스 트레이닝으로 바꾸는 것을 권장합니다.\n" +
             "착지 패턴(미드풋/포어풋), 보폭, 케이던스를 다시 점검하는 ‘리셋 데이’로 사용해 주세요.";
         } else if (rmsLevel === "high" || mdfLevel === "high") {
           title = "근 피로가 많이 누적된 상태예요.";
@@ -815,7 +779,7 @@
       status = "데이터 수집 대기 중";
       title  = "센서 스트리밍이 안정화되면 코칭이 표시됩니다.";
       body   = "IMU·EMG 데이터가 충분히 쌓이면 현재 위험도와 함께 러닝 가이드가 제공됩니다.";
-      guide  = "센서를 착용한 뒤 10~20초 정도 가볍게 움직이면서 데이터 수집을 시작해 주세요.";
+      guide  = "센서를 착용한 뒤 10–20초 정도 가볍게 움직이면서 데이터 수집을 시작해 주세요.";
 
       return { status, title, body, guide };
     }
@@ -839,39 +803,23 @@
       const angleLevel = risk.angleRate || "unknown";
       const rmsLevel   = risk.rmsDrop   || "unknown";
       const mdfLevel   = risk.mdfDrop   || "unknown";
+      const overallRisk = risk.overall || "low";  // 코칭용 종합 위험도
 
-      // 내부용 overall (코칭/색상 용도) – 표시에는 사용하지 않음
-      const overall = (risk.overall || angleLevel || "low");
-
-      // ===== 각속도 위험도 pill (UI 상단) =====
+      // ===== 상단 pill은 "각속도 수준" 위주로 표시 =====
       const overallPill = document.getElementById("overallPill");
+      const displayLevel = angleLevel === "unknown" ? overallRisk : angleLevel;
+
       overallPill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (angleLevel !== "unknown") {
-        overallPill.classList.add(levelToClass(angleLevel));
-        overallPill.textContent = angleLevel.toUpperCase();
-      } else {
-        overallPill.textContent = "-";
-      }
+      overallPill.classList.add(levelToClass(displayLevel));
+      overallPill.textContent = displayLevel.toUpperCase();
 
-      function angleDescText(level) {
-        if (level === "high") {
-          return "무릎 굽힘·펴짐 속도가 크게 올라간 상태입니다. 착지 충격이 커질 수 있으니, 강도를 줄이고 보폭·케이던스를 조절해 주세요.";
-        }
-        if (level === "med") {
-          return "무릎 각속도가 중간 수준으로 올라온 상태입니다. 페이스를 조금 낮추고, 착지를 부드럽게 만드는 데 신경 써 보세요.";
-        }
-        return "무릎 각속도 기준으로는 비교적 안정적인 상태입니다. 현재 패턴을 유지하되 과도한 페이스 증가만 피해주세요.";
-      }
-      document.getElementById("overallDesc").textContent = angleDescText(angleLevel);
-
-      // ---- angle rate 값 + bar
-      document.getElementById("angleRateVal").textContent = fmtNumber(angleRate, 1);
-      const anglePillSmall = document.getElementById("angleRateLevel");
-      anglePillSmall.classList.remove("pill-low", "pill-med", "pill-high");
-      if (angleLevel !== "unknown") {
-        anglePillSmall.classList.add(levelToClass(angleLevel));
-      }
-      anglePillSmall.textContent = angleLevel;
+      // ---- angle rate
+      document.getElementById("angleRateVal").textContent =
+        fmtNumber(angleRate, 1);
+      const anglePill = document.getElementById("angleRateLevel");
+      anglePill.classList.remove("pill-low", "pill-med", "pill-high");
+      if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
+      anglePill.textContent = angleLevel;
 
       const angleMax = 250;
       let anglePercent = 0;
@@ -891,23 +839,23 @@
         emgReportSnapshot = { rmsDrop, mdfDrop, rmsLevel, mdfLevel };
       }
 
-      // ---- Guide & Coaching (여기서는 overall + angle + EMG 모두 사용)
-      const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
+      // ---- Guide & Coaching (코칭은 종합 위험도 + EMG 고려)
+      const coach = getCoaching(overallRisk, angleLevel, rmsLevel, mdfLevel);
       document.getElementById("guideText").textContent       = coach.guide;
       document.getElementById("coachStatusText").textContent = coach.status;
       document.getElementById("coachTitle").textContent      = coach.title;
       document.getElementById("coachBody").textContent       = coach.body;
 
       const coachPill = document.getElementById("coachStatusPill");
-      coachPill.style.background = (overall === "high")
+      coachPill.style.background = (overallRisk === "high")
         ? "#FFE1E1"
-        : (overall === "med")
+        : (overallRisk === "med")
           ? "#FFF3D6"
           : "#E7F4EF";
       const dot = coachPill.querySelector(".coach-status-pill-dot");
-      dot.style.background = (overall === "high")
+      dot.style.background = (overallRisk === "high")
         ? "#E53935"
-        : (overall === "med")
+        : (overallRisk === "med")
           ? "#FFC107"
           : "#18A05D";
     }
