@@ -494,7 +494,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
             <button id="lockEmgReportBtn" type="button" class="lock-btn">
               운동 종료 · 세션 리포트 고정하기
             </button>
-            <div id="lockStatusText" class="hint-muted" style="margin-top:6px;">
+            <div id="lockStatusText" class="hint-muted" style="margin-top:6px; white-space:pre-line;">
               아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
             </div>
           </div>
@@ -565,27 +565,6 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
       }
     });
 
-    // ===== 버튼 초기화 =====
-    (function initLockButton() {
-      const lockBtn = document.getElementById("lockEmgReportBtn");
-      const lockStatus = document.getElementById("lockStatusText");
-      if (!lockBtn) return;
-
-      lockBtn.addEventListener("click", () => {
-        if (!emgReportSnapshot) {
-          if (lockStatus) {
-            lockStatus.textContent = "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
-          }
-          return;
-        }
-        emgReportLocked = true;
-        lockBtn.disabled = true;
-        if (lockStatus) {
-          lockStatus.textContent = "세션 리포트가 고정되었습니다. 새 데이터가 와도 RMS/MDF 값은 바뀌지 않습니다.";
-        }
-      });
-    })();
-
     // ===== Helper functions =====
     function fmtNumber(v, digits = 1) {
       if (v === null || v === undefined || !isFinite(v)) return "-";
@@ -632,6 +611,36 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         mdfPill.className = "pill emg-pill " + levelToClass(mdfLevel);
         mdfPill.textContent = mdfLevel.toUpperCase();
       }
+    }
+
+    // ===== 세션 EMG 요약 멘트 생성 =====
+    function buildEmgSessionSummary(rmsPct, mdfPct) {
+      const hasRms = rmsPct != null && isFinite(rmsPct);
+      const hasMdf = mdfPct != null && isFinite(mdfPct);
+
+      if (!hasRms && !hasMdf) {
+        return "세션 요약을 만들 수 있을 만큼 EMG 데이터가 충분하지 않았습니다.";
+      }
+
+      let parts = [];
+
+      if (hasRms) {
+        let q;
+        if (rmsPct < 10)      q = "초반과 비슷한 근 사용량이었습니다.";
+        else if (rmsPct < 30) q = "후반으로 갈수록 근 사용량이 조금 늘어난 편입니다.";
+        else                  q = "후반에 근 사용량이 많이 늘어난 상태였습니다.";
+        parts.push(`RMS는 약 ${rmsPct.toFixed(1)}% 증가해 ${q}`);
+      }
+
+      if (hasMdf) {
+        let q;
+        if (mdfPct < 10)      q = "피로 누적은 크지 않은 편입니다.";
+        else if (mdfPct < 30) q = "근 피로가 다소 쌓인 편입니다.";
+        else                  q = "근 피로가 많이 쌓인 상태입니다.";
+        parts.push(`MDF는 약 ${mdfPct.toFixed(1)}% 감소해 ${q}`);
+      }
+
+      return parts.join(" ") + " 가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
     }
 
     // AI coaching message logic (근거 논문 텍스트 제거 버전)
@@ -740,6 +749,36 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
 
       return { status, title, body, guide };
     }
+
+    // ===== 버튼 초기화 =====
+    (function initLockButton() {
+      const lockBtn = document.getElementById("lockEmgReportBtn");
+      const lockStatus = document.getElementById("lockStatusText");
+      if (!lockBtn) return;
+
+      lockBtn.addEventListener("click", () => {
+        if (!emgReportSnapshot) {
+          if (lockStatus) {
+            lockStatus.textContent =
+              "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
+          }
+          return;
+        }
+
+        emgReportLocked = true;
+        lockBtn.disabled = true;
+
+        if (lockStatus) {
+          const rmsPct = emgReportSnapshot.rmsDrop;
+          const mdfPct = emgReportSnapshot.mdfDrop;
+          const summary = buildEmgSessionSummary(rmsPct, mdfPct);
+
+          lockStatus.textContent =
+            "세션 리포트가 고정되었습니다. 새 데이터가 와도 RMS/MDF 값은 바뀌지 않습니다.\n" +
+            summary;
+        }
+      });
+    })();
 
     // ===== Main update =====
     function updateDashboard(payload) {
