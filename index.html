@@ -495,7 +495,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
               운동 종료 · 세션 리포트 고정하기
             </button>
             <div id="lockStatusText" class="hint-muted" style="margin-top:6px; white-space:pre-line;">
-              아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
+아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
             </div>
           </div>
         </div>
@@ -613,44 +613,79 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
       }
     }
 
-    // ===== 세션 EMG 요약 멘트 생성 =====
-    function buildEmgSessionSummary(rmsPct, mdfPct) {
+    // ===== 세션 EMG 요약 멘트 생성 (RMS × MDF 조합별) =====
+    function buildEmgSessionSummary(rmsPct, mdfPct, rmsLevel, mdfLevel) {
       const hasRms = rmsPct != null && isFinite(rmsPct);
       const hasMdf = mdfPct != null && isFinite(mdfPct);
 
       if (!hasRms && !hasMdf) {
-        return "세션 요약을 만들 수 있을 만큼 EMG 데이터가 충분하지 않았습니다.";
+        return "세션 리포트가 고정되었습니다.\n" +
+               "EMG 데이터가 충분하지 않아 이번 세션의 피로 요약을 만들기 어렵습니다.";
       }
 
-      let parts = [];
+      const lines = [];
+      lines.push("세션 리포트가 고정되었습니다.");
 
-      if (hasRms) {
-        let q;
-        if (rmsPct < 10)      q = "초반과 비슷한 근 사용량이었습니다.";
-        else if (rmsPct < 30) q = "후반으로 갈수록 근 사용량이 조금 늘어난 편입니다.";
-        else                  q = "후반에 근 사용량이 많이 늘어난 상태였습니다.";
-        parts.push(`RMS는 약 ${rmsPct.toFixed(1)}% 증가해 ${q}`);
+      if (hasRms) lines.push(`RMS는 약 ${rmsPct.toFixed(1)}% 증가했습니다.`);
+      if (hasMdf) lines.push(`MDF는 약 ${mdfPct.toFixed(1)}% 감소했습니다.`);
+
+      const r = (rmsLevel || "unknown").toLowerCase();
+      const m = (mdfLevel || "unknown").toLowerCase();
+      let advice = "";
+
+      if (r === "low" && m === "low") {
+        advice =
+          "후반부까지 힘 사용 변화가 크지 않고 피로 누적도 적은 편이에요. " +
+          "지금처럼 자연스러운 페이스를 유지하면서 가벼운 정적 스트레칭 정도만 해주면 충분합니다.";
+      } else if (r === "low" && m === "med") {
+        advice =
+          "근 사용량은 안정적이지만 피로가 약간 누적되고 있어요. " +
+          "강한 스트레칭보다는 종아리·햄스트링 위주의 짧은 쿨다운을 권장합니다.";
+      } else if (r === "low" && m === "high") {
+        advice =
+          "사용량 변화는 거의 없지만 피로 지표가 크게 떨어졌어요. " +
+          "근지구력이 소진된 신호일 수 있으니 오늘은 충분히 쉬고 강도 높은 운동은 피해주세요.";
+      } else if (r === "med" && m === "low") {
+        advice =
+          "후반으로 갈수록 힘을 조금 더 쓰긴 했지만 피로 누적은 크지 않은 편이에요. " +
+          "천천히 호흡을 정리하고 관절 가동성 스트레칭을 넣어주면 회복이 빠릅니다.";
+      } else if (r === "med" && m === "med") {
+        advice =
+          "근 사용량이 조금 증가했고 피로도 함께 쌓인 상태예요. " +
+          "세션 마무리는 가벼운 스트레칭과 5분 정도의 느린 보행 쿨다운을 권장합니다.";
+      } else if (r === "med" && m === "high") {
+        advice =
+          "힘 사용량이 늘어난 상태에서 피로도가 높게 누적되었어요. " +
+          "근육 지지력이 떨어질 수 있으므로 오늘은 충분히 쉬고, 다음 세션 강도는 살짝 낮추는 것이 좋습니다.";
+      } else if (r === "high" && m === "low") {
+        advice =
+          "근 사용량이 크게 증가했지만 피로는 아직 적은 편이에요. " +
+          "동작 패턴이 과하게 힘을 쓰는 방식일 수 있으니 착지·보폭·자세를 점검해 보는 것을 추천합니다.";
+      } else if (r === "high" && m === "med") {
+        advice =
+          "세션 후반부에 힘을 많이 쓰고 피로도 함께 쌓인 상태예요. " +
+          "무릎 주변 근육의 안정성이 떨어질 수 있으니 오늘은 강도 조절과 회복에 특히 신경 써 주세요.";
+      } else if (r === "high" && m === "high") {
+        advice =
+          "근 사용량 증가와 피로 누적이 동시에 크게 나타났어요. " +
+          "부상 위험이 높아지는 구간이므로 즉시 휴식하고, 다음 훈련 전 충분한 회복 시간을 확보하는 것이 좋습니다.";
+      } else {
+        advice =
+          "이번 세션의 EMG 패턴에서 일부 값이 불안정하게 측정되었습니다. " +
+          "그래도 가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
       }
 
-      if (hasMdf) {
-        let q;
-        if (mdfPct < 10)      q = "피로 누적은 크지 않은 편입니다.";
-        else if (mdfPct < 30) q = "근 피로가 다소 쌓인 편입니다.";
-        else                  q = "근 피로가 많이 쌓인 상태입니다.";
-        parts.push(`MDF는 약 ${mdfPct.toFixed(1)}% 감소해 ${q}`);
-      }
-
-      return parts.join(" ") + " 가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
+      lines.push(advice);
+      return lines.join("\n");
     }
 
-    // AI coaching message logic (근거 논문 텍스트 제거 버전)
+    // AI coaching message logic
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
       let status = "";
       let title  = "";
       let body   = "";
       let guide  = "";
 
-      // ===== LOW 위험도 =====
       if (overall === "low") {
         status = "🟢 LOW 위험도";
         title  = "현재 상태 양호합니다.";
@@ -669,7 +704,6 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
-      // ===== MEDIUM 위험도 =====
       if (overall === "med") {
         status = "🟡 MEDIUM 위험도";
 
@@ -705,7 +739,6 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
-      // ===== HIGH 위험도 =====
       if (overall === "high") {
         status = "🔴 HIGH 위험도";
 
@@ -741,7 +774,6 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
-      // ===== unknown fallback =====
       status = "데이터 수집 대기 중";
       title  = "센서 스트리밍이 안정화되면 코칭이 표시됩니다.";
       body   = "IMU·EMG 데이터가 충분히 쌓이면 현재 위험도와 함께 러닝 가이드가 제공됩니다.";
@@ -760,7 +792,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         if (!emgReportSnapshot) {
           if (lockStatus) {
             lockStatus.textContent =
-              "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
+"아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
           }
           return;
         }
@@ -769,13 +801,13 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         lockBtn.disabled = true;
 
         if (lockStatus) {
-          const rmsPct = emgReportSnapshot.rmsDrop;
-          const mdfPct = emgReportSnapshot.mdfDrop;
-          const summary = buildEmgSessionSummary(rmsPct, mdfPct);
+          const rmsPct  = emgReportSnapshot.rmsDrop;
+          const mdfPct  = emgReportSnapshot.mdfDrop;
+          const rmsLvl  = emgReportSnapshot.rmsLevel;
+          const mdfLvl  = emgReportSnapshot.mdfLevel;
 
-          lockStatus.textContent =
-            "세션 리포트가 고정되었습니다. 새 데이터가 와도 RMS/MDF 값은 바뀌지 않습니다.\n" +
-            summary;
+          const summary = buildEmgSessionSummary(rmsPct, mdfPct, rmsLvl, mdfLvl);
+          lockStatus.textContent = summary;
         }
       });
     })();
