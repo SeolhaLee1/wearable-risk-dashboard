@@ -172,7 +172,7 @@
       color: #B3261E;
     }
 
-    /* 큰 pill (종합 위험도) */
+    /* 큰 pill (각속도 위험도) */
     .pill-large {
       font-size: 16px;
       padding: 6px 18px;
@@ -332,6 +332,7 @@
       font-size: 11px;
       color: #9AA7A4;
       margin-top: 4px;
+      white-space: pre-line; /* 세션 리포트 요약 줄바꿈 표시 */
     }
 
     /* EMG summary row */
@@ -445,12 +446,13 @@
       <div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title">종합 위험도</div>
+            <div class="card-title">무릎 상대 각속도 위험도</div>
+            <!-- 여기 pill은 angleRate 기준 LOW/MED/HIGH만 표시 -->
             <div id="overallPill" class="pill pill-large pill-low">LOW</div>
           </div>
           <div id="overallDesc" class="card-sub">
-            현재는 비교적 안정적인 상태입니다. 움직임 패턴을 장시간 모니터링하며,
-            위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.
+            무릎 굽힘·펴짐 속도를 기준으로 현재 부하 수준을 보여줍니다.
+            값이 높을수록 착지·방향전환 시 순간 부하가 커질 수 있어요.
           </div>
 
           <!-- Knee angle rate -->
@@ -480,22 +482,20 @@
           <div class="metric-row emg-summary-row">
             <div class="emg-summary-title">세션 EMG 피로 리포트</div>
             <div class="emg-summary-text">
-              RMS 증가율: <span id="emgRmsReport">-</span>%
+              RMS 변화율: <span id="emgRmsReport">-</span>%
               <span id="emgRmsLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span><br/>
               MDF 감소율: <span id="emgMdfReport">-</span>%
               <span id="emgMdfLevel" class="pill emg-pill pill-low" style="display:none;">LOW</span>
             </div>
-            <div class="hint-muted" style="white-space:pre-line;">
-RMS 증가율: 근육 사용량이 늘어난 정도입니다. 값이 클수록 후반부에 더 많은 힘을 쓰고 있다는 뜻이에요.
-MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. 값이 클수록 쉽게 지치고 지지력이 떨어져요.
+            <div class="hint-muted">
 실시간 데이터는 계속 변화합니다.
 운동을 마친 뒤 버튼을 눌러 해당 시점의 값을 세션 리포트로 저장하세요.
             </div>
             <button id="lockEmgReportBtn" type="button" class="lock-btn">
               운동 종료 · 세션 리포트 고정하기
             </button>
-            <div id="lockStatusText" class="hint-muted" style="margin-top:6px; white-space:pre-line;">
-아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
+            <div id="lockStatusText" class="hint-muted" style="margin-top:6px;">
+              아직 세션 진행 중입니다. 운동을 마치면 위 버튼을 눌러 리포트를 고정하세요.
             </div>
           </div>
         </div>
@@ -565,6 +565,32 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
       }
     });
 
+    // ===== 버튼 초기화 =====
+    (function initLockButton() {
+      const lockBtn = document.getElementById("lockEmgReportBtn");
+      const lockStatus = document.getElementById("lockStatusText");
+      if (!lockBtn) return;
+
+      lockBtn.addEventListener("click", () => {
+        if (!emgReportSnapshot) {
+          if (lockStatus) {
+            lockStatus.textContent = "아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
+          }
+          return;
+        }
+        emgReportLocked = true;
+        lockBtn.disabled = true;
+
+        const summary = generateEmgSessionSummary(
+          emgReportSnapshot.rmsDrop,
+          emgReportSnapshot.mdfDrop
+        );
+        if (lockStatus) {
+          lockStatus.textContent = summary;
+        }
+      });
+    })();
+
     // ===== Helper functions =====
     function fmtNumber(v, digits = 1) {
       if (v === null || v === undefined || !isFinite(v)) return "-";
@@ -613,79 +639,88 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
       }
     }
 
-    // ===== 세션 EMG 요약 멘트 생성 (RMS × MDF 조합별) =====
-    function buildEmgSessionSummary(rmsPct, mdfPct, rmsLevel, mdfLevel) {
-      const hasRms = rmsPct != null && isFinite(rmsPct);
-      const hasMdf = mdfPct != null && isFinite(mdfPct);
+    // EMG 세션 리포트 요약 생성
+    function generateEmgSessionSummary(rmsDrop, mdfDrop) {
+      const hasRms = rmsDrop != null && isFinite(rmsDrop);
+      const hasMdf = mdfDrop != null && isFinite(mdfDrop);
 
+      function describeRms(v) {
+        if (!hasRms) return "RMS는 아직 충분한 데이터가 없어 해석이 어렵습니다.";
+        const mag = Math.abs(v);
+        if (v >= 0) {
+          if (mag < 5) {
+            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 전반과 비슷한 수준의 근 사용량을 유지했습니다.`;
+          } else if (mag < 20) {
+            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 후반으로 갈수록 근 사용량이 조금 늘어난 편입니다.`;
+          } else {
+            return `RMS는 약 ${fmtNumber(mag)}% 증가해, 후반부에 힘을 많이 써 무릎 주변 근육에 부담이 커졌을 수 있습니다.`;
+          }
+        } else {
+          if (mag < 5) {
+            return `RMS는 약 ${fmtNumber(mag)}% 감소해, 전반과 비슷한 수준의 근 사용량을 유지했습니다.`;
+          } else {
+            return `RMS는 약 ${fmtNumber(mag)}% 감소해, 후반부에는 상대적으로 힘을 덜 쓰는 패턴이었습니다.`;
+          }
+        }
+      }
+
+      function describeMdf(v) {
+        if (!hasMdf) return "MDF는 아직 충분한 데이터가 없어 해석이 어렵습니다.";
+        const mag = Math.abs(v);
+        if (v >= 0) {
+          if (mag < 5) {
+            return `MDF는 약 ${fmtNumber(mag)}% 감소에 그쳐, 피로 누적은 크지 않은 편입니다.`;
+          } else if (mag < 20) {
+            return `MDF는 약 ${fmtNumber(mag)}% 감소해, 피로가 서서히 쌓인 편입니다.`;
+          } else {
+            return `MDF는 약 ${fmtNumber(mag)}% 크게 감소해, 근 피로가 꽤 많이 누적된 상태일 수 있습니다.`;
+          }
+        } else {
+          if (mag < 5) {
+            return `MDF는 약 ${fmtNumber(mag)}% 증가해, 피로 누적은 크지 않은 편입니다.`;
+          } else {
+            return `MDF는 약 ${fmtNumber(mag)}% 증가해, 근 수축 패턴이 오히려 가벼워진 구간이 있었습니다.`;
+          }
+        }
+      }
+
+      let fatigueScore = 0;
+      if (hasRms && rmsDrop >= 15) fatigueScore++;
+      if (hasRms && rmsDrop >= 30) fatigueScore++;
+      if (hasMdf && mdfDrop >= 10) fatigueScore++;
+      if (hasMdf && mdfDrop >= 25) fatigueScore++;
+
+      let reco;
       if (!hasRms && !hasMdf) {
-        return "세션 리포트가 고정되었습니다.\n" +
-               "EMG 데이터가 충분하지 않아 이번 세션의 피로 요약을 만들기 어렵습니다.";
-      }
-
-      const lines = [];
-      lines.push("세션 리포트가 고정되었습니다.");
-
-      if (hasRms) lines.push(`RMS는 약 ${rmsPct.toFixed(1)}% 증가했습니다.`);
-      if (hasMdf) lines.push(`MDF는 약 ${mdfPct.toFixed(1)}% 감소했습니다.`);
-
-      const r = (rmsLevel || "unknown").toLowerCase();
-      const m = (mdfLevel || "unknown").toLowerCase();
-      let advice = "";
-
-      if (r === "low" && m === "low") {
-        advice =
-          "후반부까지 힘 사용 변화가 크지 않고 피로 누적도 적은 편이에요. " +
-          "지금처럼 자연스러운 페이스를 유지하면서 가벼운 정적 스트레칭 정도만 해주면 충분합니다.";
-      } else if (r === "low" && m === "med") {
-        advice =
-          "근 사용량은 안정적이지만 피로가 약간 누적되고 있어요. " +
-          "강한 스트레칭보다는 종아리·햄스트링 위주의 짧은 쿨다운을 권장합니다.";
-      } else if (r === "low" && m === "high") {
-        advice =
-          "사용량 변화는 거의 없지만 피로 지표가 크게 떨어졌어요. " +
-          "근지구력이 소진된 신호일 수 있으니 오늘은 충분히 쉬고 강도 높은 운동은 피해주세요.";
-      } else if (r === "med" && m === "low") {
-        advice =
-          "후반으로 갈수록 힘을 조금 더 쓰긴 했지만 피로 누적은 크지 않은 편이에요. " +
-          "천천히 호흡을 정리하고 관절 가동성 스트레칭을 넣어주면 회복이 빠릅니다.";
-      } else if (r === "med" && m === "med") {
-        advice =
-          "근 사용량이 조금 증가했고 피로도 함께 쌓인 상태예요. " +
-          "세션 마무리는 가벼운 스트레칭과 5분 정도의 느린 보행 쿨다운을 권장합니다.";
-      } else if (r === "med" && m === "high") {
-        advice =
-          "힘 사용량이 늘어난 상태에서 피로도가 높게 누적되었어요. " +
-          "근육 지지력이 떨어질 수 있으므로 오늘은 충분히 쉬고, 다음 세션 강도는 살짝 낮추는 것이 좋습니다.";
-      } else if (r === "high" && m === "low") {
-        advice =
-          "근 사용량이 크게 증가했지만 피로는 아직 적은 편이에요. " +
-          "동작 패턴이 과하게 힘을 쓰는 방식일 수 있으니 착지·보폭·자세를 점검해 보는 것을 추천합니다.";
-      } else if (r === "high" && m === "med") {
-        advice =
-          "세션 후반부에 힘을 많이 쓰고 피로도 함께 쌓인 상태예요. " +
-          "무릎 주변 근육의 안정성이 떨어질 수 있으니 오늘은 강도 조절과 회복에 특히 신경 써 주세요.";
-      } else if (r === "high" && m === "high") {
-        advice =
-          "근 사용량 증가와 피로 누적이 동시에 크게 나타났어요. " +
-          "부상 위험이 높아지는 구간이므로 즉시 휴식하고, 다음 훈련 전 충분한 회복 시간을 확보하는 것이 좋습니다.";
+        reco = "데이터가 충분하지 않아 구체적인 피로도 평가는 어렵습니다. 다음 세션에서 조금 더 길게 측정해 보세요.";
+      } else if (fatigueScore <= 0) {
+        reco = "가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
+      } else if (fatigueScore <= 2) {
+        reco = "오늘은 강도를 조금 줄이고, 충분한 수분 섭취와 하체 스트레칭으로 회복해 주세요.";
       } else {
-        advice =
-          "이번 세션의 EMG 패턴에서 일부 값이 불안정하게 측정되었습니다. " +
-          "그래도 가벼운 스트레칭과 쿨다운으로 마무리해 주세요.";
+        reco = "다음 세션에서는 강도나 거리를 줄이고, 하체 근육 회복(스트레칭·폼롤링·수면)을 우선해 주세요.";
       }
 
-      lines.push(advice);
+      const lines = [
+        "세션 리포트가 고정되었습니다.",
+        "",
+        hasRms ? describeRms(rmsDrop) : "RMS는 아직 충분한 데이터가 없어 해석이 어렵습니다.",
+        hasMdf ? describeMdf(mdfDrop) : "MDF는 아직 충분한 데이터가 없어 해석이 어렵습니다.",
+        "",
+        reco
+      ];
+
       return lines.join("\n");
     }
 
-    // AI coaching message logic
+    // AI coaching message logic (overall은 내부적으로만 사용)
     function getCoaching(overall, angLevel, rmsLevel, mdfLevel) {
       let status = "";
       let title  = "";
       let body   = "";
       let guide  = "";
 
+      // ===== LOW 위험도 =====
       if (overall === "low") {
         status = "🟢 LOW 위험도";
         title  = "현재 상태 양호합니다.";
@@ -704,6 +739,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
+      // ===== MEDIUM 위험도 =====
       if (overall === "med") {
         status = "🟡 MEDIUM 위험도";
 
@@ -739,6 +775,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
+      // ===== HIGH 위험도 =====
       if (overall === "high") {
         status = "🔴 HIGH 위험도";
 
@@ -747,7 +784,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
 
           body =
             "각속도 피크가 높게 측정되어, 착지/방향 전환 시 무릎에 큰 부하가 걸리고 있습니다.\n" +
-            "오늘은 달리기를 중단하고, 자전거·수영 등 저충격 크로스 트레이닝으로 바꾸는 것을 권장합니다.\n" +
+            "오늘은 달리기를 중단하고, 자전거·수영 등 저충격 크로스트레이닝으로 바꾸는 것을 권장합니다.\n" +
             "착지 패턴(미드풋/포어풋), 보폭, 케이던스를 다시 점검하는 ‘리셋 데이’로 사용해 주세요.";
         } else if (rmsLevel === "high" || mdfLevel === "high") {
           title = "근 피로가 많이 누적된 상태예요.";
@@ -774,6 +811,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         return { status, title, body, guide };
       }
 
+      // ===== unknown fallback =====
       status = "데이터 수집 대기 중";
       title  = "센서 스트리밍이 안정화되면 코칭이 표시됩니다.";
       body   = "IMU·EMG 데이터가 충분히 쌓이면 현재 위험도와 함께 러닝 가이드가 제공됩니다.";
@@ -781,36 +819,6 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
 
       return { status, title, body, guide };
     }
-
-    // ===== 버튼 초기화 =====
-    (function initLockButton() {
-      const lockBtn = document.getElementById("lockEmgReportBtn");
-      const lockStatus = document.getElementById("lockStatusText");
-      if (!lockBtn) return;
-
-      lockBtn.addEventListener("click", () => {
-        if (!emgReportSnapshot) {
-          if (lockStatus) {
-            lockStatus.textContent =
-"아직 EMG 데이터가 충분하지 않습니다. 몇 초 더 움직인 뒤 다시 눌러주세요.";
-          }
-          return;
-        }
-
-        emgReportLocked = true;
-        lockBtn.disabled = true;
-
-        if (lockStatus) {
-          const rmsPct  = emgReportSnapshot.rmsDrop;
-          const mdfPct  = emgReportSnapshot.mdfDrop;
-          const rmsLvl  = emgReportSnapshot.rmsLevel;
-          const mdfLvl  = emgReportSnapshot.mdfLevel;
-
-          const summary = buildEmgSessionSummary(rmsPct, mdfPct, rmsLvl, mdfLvl);
-          lockStatus.textContent = summary;
-        }
-      });
-    })();
 
     // ===== Main update =====
     function updateDashboard(payload) {
@@ -832,32 +840,38 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
       const rmsLevel   = risk.rmsDrop   || "unknown";
       const mdfLevel   = risk.mdfDrop   || "unknown";
 
-      // overall pill
-      const overall = risk.overall || "low";
+      // 내부용 overall (코칭/색상 용도) – 표시에는 사용하지 않음
+      const overall = (risk.overall || angleLevel || "low");
+
+      // ===== 각속도 위험도 pill (UI 상단) =====
       const overallPill = document.getElementById("overallPill");
       overallPill.classList.remove("pill-low", "pill-med", "pill-high");
-      overallPill.classList.add(levelToClass(overall));
-      overallPill.textContent = overall.toUpperCase();
-
-      // overall description
-      function overallDescText(overallLvl) {
-        if (overallLvl === "high") {
-          return "현재 센서 기준으로 부상 위험도가 높은 상태입니다. 강도를 즉시 줄이거나 운동을 중단하고, 자세와 피로도를 함께 점검해 주세요.";
-        }
-        if (overallLvl === "med") {
-          return "일부 지표에서 위험 신호가 감지되었습니다. 동작 속도·착지 패턴·근 피로 중 어느 부분이 문제인지 오른쪽 가이드를 참고하여 조정해 보세요.";
-        }
-        return "현재는 비교적 안정적인 상태입니다. 움직임 패턴을 장시간 모니터링하며, 위험이 올라가기 시작하는 구간을 찾는 데 활용해 보세요.";
+      if (angleLevel !== "unknown") {
+        overallPill.classList.add(levelToClass(angleLevel));
+        overallPill.textContent = angleLevel.toUpperCase();
+      } else {
+        overallPill.textContent = "-";
       }
-      document.getElementById("overallDesc").textContent = overallDescText(overall);
 
-      // ---- angle rate
-      document.getElementById("angleRateVal").textContent =
-        fmtNumber(angleRate, 1);
-      const anglePill = document.getElementById("angleRateLevel");
-      anglePill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
-      anglePill.textContent = angleLevel;
+      function angleDescText(level) {
+        if (level === "high") {
+          return "무릎 굽힘·펴짐 속도가 크게 올라간 상태입니다. 착지 충격이 커질 수 있으니, 강도를 줄이고 보폭·케이던스를 조절해 주세요.";
+        }
+        if (level === "med") {
+          return "무릎 각속도가 중간 수준으로 올라온 상태입니다. 페이스를 조금 낮추고, 착지를 부드럽게 만드는 데 신경 써 보세요.";
+        }
+        return "무릎 각속도 기준으로는 비교적 안정적인 상태입니다. 현재 패턴을 유지하되 과도한 페이스 증가만 피해주세요.";
+      }
+      document.getElementById("overallDesc").textContent = angleDescText(angleLevel);
+
+      // ---- angle rate 값 + bar
+      document.getElementById("angleRateVal").textContent = fmtNumber(angleRate, 1);
+      const anglePillSmall = document.getElementById("angleRateLevel");
+      anglePillSmall.classList.remove("pill-low", "pill-med", "pill-high");
+      if (angleLevel !== "unknown") {
+        anglePillSmall.classList.add(levelToClass(angleLevel));
+      }
+      anglePillSmall.textContent = angleLevel;
 
       const angleMax = 250;
       let anglePercent = 0;
@@ -877,7 +891,7 @@ MDF 감소율: 근 피로가 얼마나 쌓였는지 나타내는 지표예요. �
         emgReportSnapshot = { rmsDrop, mdfDrop, rmsLevel, mdfLevel };
       }
 
-      // ---- Guide & Coaching
+      // ---- Guide & Coaching (여기서는 overall + angle + EMG 모두 사용)
       const coach = getCoaching(overall, angleLevel, rmsLevel, mdfLevel);
       document.getElementById("guideText").textContent       = coach.guide;
       document.getElementById("coachStatusText").textContent = coach.status;
