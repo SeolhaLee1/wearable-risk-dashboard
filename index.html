@@ -172,11 +172,11 @@
       color: #B3261E;
     }
 
-    /* 큰 pill (종합 위험도) */
+    /* 큰 pill (예전 종합 위험도 용 – 지금은 사용 안 함)
     .pill-large {
       font-size: 16px;
       padding: 6px 18px;
-    }
+    } */
 
     .emg-pill {
       font-size: 11px;
@@ -332,7 +332,7 @@
       font-size: 11px;
       color: #9AA7A4;
       margin-top: 4px;
-      white-space: pre-line;  /* 줄바꿈(\n) 보이게 */
+      white-space: pre-line;
     }
 
     /* EMG summary row */
@@ -357,14 +357,12 @@
       line-height: 1.5;
     }
 
-    /* 줄바꿈(\n) 표시용 */
     .guide-text,
     .coach-body,
     .coach-tips {
       white-space: pre-line;
     }
 
-    /* EMG 리포트 고정 버튼 */
     .lock-btn {
       margin-top: 8px;
       padding: 6px 12px;
@@ -446,8 +444,8 @@
       <div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title">종합 위험도</div>
-            <div id="overallPill" class="pill pill-large pill-low">LOW</div>
+            <!-- 종합 위험도 → 무릎 각속도 피크 제목으로 변경, 상단 pill 삭제 -->
+            <div class="card-title">무릎 상대 각속도 피크</div>
           </div>
           <div id="overallDesc" class="card-sub">
             착지·방향전환 순간에 무릎이 얼마나 빠르게 꺾였다 펴지는지를 보여주는 값입니다.
@@ -464,7 +462,8 @@
               <div class="metric-value">
                 <span id="angleRateVal">-</span>
                 <span> · </span>
-                <span id="angleRateLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">low</span>
+                <!-- 이 pill 하나로만 위험도 표시 -->
+                <span id="angleRateLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">LOW</span>
               </div>
             </div>
             <div class="scale-bar">
@@ -647,18 +646,15 @@
       return Math.max(0, Math.min(100, v));
     }
 
-    // EMG 리포트를 실제로 렌더링하는 함수
     function renderEmgReport(rmsDrop, mdfDrop, rmsLevel, mdfLevel) {
       const rmsSpan  = document.getElementById("emgRmsReport");
       const mdfSpan  = document.getElementById("emgMdfReport");
       const rmsPill  = document.getElementById("emgRmsLevel");
       const mdfPill  = document.getElementById("emgMdfLevel");
 
-      // 값 텍스트
       rmsSpan.textContent = (rmsDrop == null || !isFinite(rmsDrop)) ? "-" : fmtNumber(rmsDrop, 1);
       mdfSpan.textContent = (mdfDrop == null || !isFinite(mdfDrop)) ? "-" : fmtNumber(mdfDrop, 1);
 
-      // RMS level pill
       if (rmsLevel === "unknown" || rmsDrop == null || !isFinite(rmsDrop)) {
         rmsPill.style.display = "none";
       } else {
@@ -667,7 +663,6 @@
         rmsPill.textContent = rmsLevel.toUpperCase();
       }
 
-      // MDF level pill
       if (mdfLevel === "unknown" || mdfDrop == null || !isFinite(mdfDrop)) {
         mdfPill.style.display = "none";
       } else {
@@ -684,7 +679,6 @@
       let body   = "";
       let guide  = "";
 
-      // ===== LOW 위험도 =====
       if (overall === "low") {
         status = "🟢 LOW 위험도";
         title  = "현재 상태 양호합니다.";
@@ -703,7 +697,6 @@
         return { status, title, body, guide };
       }
 
-      // ===== MEDIUM 위험도 =====
       if (overall === "med") {
         status = "🟡 MEDIUM 위험도";
 
@@ -739,7 +732,6 @@
         return { status, title, body, guide };
       }
 
-      // ===== HIGH 위험도 =====
       if (overall === "high") {
         status = "🔴 HIGH 위험도";
 
@@ -775,7 +767,6 @@
         return { status, title, body, guide };
       }
 
-      // ===== unknown fallback =====
       status = "데이터 수집 대기 중";
       title  = "센서 스트리밍이 안정화되면 코칭이 표시됩니다.";
       body   = "IMU·EMG 데이터가 충분히 쌓이면 현재 위험도와 함께 러닝 가이드가 제공됩니다.";
@@ -803,30 +794,25 @@
       const angleLevel = risk.angleRate || "unknown";
       const rmsLevel   = risk.rmsDrop   || "unknown";
       const mdfLevel   = risk.mdfDrop   || "unknown";
-      const overallRisk = risk.overall || "low";  // 코칭용 종합 위험도
+      const overallRisk = risk.overall || "low";  // 코칭용 종합 위험도 (UI에는 표시 X)
 
-      // ===== 상단 pill은 "각속도 수준" 위주로 표시 =====
-      const overallPill = document.getElementById("overallPill");
-      const displayLevel = angleLevel === "unknown" ? overallRisk : angleLevel;
-
-      overallPill.classList.remove("pill-low", "pill-med", "pill-high");
-      overallPill.classList.add(levelToClass(displayLevel));
-      overallPill.textContent = displayLevel.toUpperCase();
-
-      // ---- angle rate
+      // ---- angle rate (이 값으로만 위험도 표시)
       document.getElementById("angleRateVal").textContent =
         fmtNumber(angleRate, 1);
       const anglePill = document.getElementById("angleRateLevel");
-      anglePill.classList.remove("pill-low", "pill-med", "pill-high");
-      if (angleLevel !== "unknown") anglePill.classList.add(levelToClass(angleLevel));
-      anglePill.textContent = angleLevel;
+      anglePill.className = "pill"; // 초기화 후
+      anglePill.classList.add("pill-low"); // 기본
+      if (angleLevel !== "unknown") {
+        anglePill.className = "pill " + levelToClass(angleLevel);
+      }
+      anglePill.textContent = (angleLevel === "unknown" ? "LOW" : angleLevel.toUpperCase());
 
       const angleMax = 250;
       let anglePercent = 0;
       if (isFinite(angleRate)) anglePercent = clampPercent((angleRate / angleMax) * 100);
       document.getElementById("angleRateMarker").style.left = anglePercent + "%";
 
-      // ---- EMG report (RMS / MDF) - 세션 리포트 고정 로직
+      // ---- EMG report (RMS / MDF)
       if (emgReportLocked && emgReportSnapshot) {
         renderEmgReport(
           emgReportSnapshot.rmsDrop,
@@ -839,7 +825,7 @@
         emgReportSnapshot = { rmsDrop, mdfDrop, rmsLevel, mdfLevel };
       }
 
-      // ---- Guide & Coaching (코칭은 종합 위험도 + EMG 고려)
+      // ---- Guide & Coaching (코칭은 여전히 종합 위험도 + EMG 고려)
       const coach = getCoaching(overallRisk, angleLevel, rmsLevel, mdfLevel);
       document.getElementById("guideText").textContent       = coach.guide;
       document.getElementById("coachStatusText").textContent = coach.status;
