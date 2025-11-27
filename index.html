@@ -445,13 +445,8 @@
         <div class="card">
           <div class="card-header">
             <!-- 종합 위험도 → 무릎 각속도 피크 제목으로 변경, 상단 pill 삭제 -->
-            <div class="card-title">무릎 상대 각속도 피크</div>
+            <div class="card-title">무릎 부상 위험도</div>
           </div>
-          <div id="overallDesc" class="card-sub">
-            착지·방향전환 순간에 무릎이 얼마나 빠르게 꺾였다 펴지는지를 보여주는 값입니다.
-            착지 충격이나 방향 전환 부하가 클수록 이 값이 높게 나타날 수 있어요.
-          </div>
-
           <!-- Knee angle rate -->
           <div class="metric-row">
             <div class="metric-top">
@@ -463,7 +458,7 @@
                 <span id="angleRateVal">-</span>
                 <span> · </span>
                 <!-- 이 pill 하나로만 위험도 표시 -->
-                <span id="angleRateLevel" class="pill pill-low" style="font-size:11px; padding:2px 8px;">LOW</span>
+                <span id="angleRateLevel" class="pill pill-low" style="font-size:14px; padding:4px 12px;">LOW</span>
               </div>
             </div>
             <div class="scale-bar">
@@ -474,6 +469,10 @@
               <span class="warn"><span class="dot">●</span>주의 (100–200)</span>
               <span class="danger"><span class="dot">●</span>위험 (&gt;= 200)</span>
             </div>
+          </div>
+          <div id="overallDesc" class="card-sub">
+            착지·방향전환 순간에 무릎이 얼마나 빠르게 꺾였다 펴지는지를 보여주는 값입니다.
+            착지 충격이나 방향 전환 부하가 클수록 이 값이 높게 나타날 수 있어요.
           </div>
 
           <!-- EMG session report (RMS / MDF) -->
